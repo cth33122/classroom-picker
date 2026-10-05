@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f766e">
+  <meta name="description" content="离线课堂智能点名">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="智能点名">
+  <link rel="icon" type="image/png" sizes="48x48" href="icons/icon-48.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="icons/icon-180.png">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
+  <title>课堂智能点名</title>
+</head>
+<body>
+  <header class="topbar">
+    <div><p class="eyebrow">OFFLINE CLASSROOM TOOL</p><h1>课堂智能点名</h1></div>
+    <button id="installBtn" class="icon-button" hidden title="添加到主屏幕">＋</button>
+    <div id="quickClasses" class="quick-classes"></div>
+    <select id="globalClassSelect" class="global-class" aria-label="选择班级"></select>
+  </header>
+  <main>
+    <nav class="tabs" aria-label="主要功能">
+      <button class="tab active" data-view="rollcall">点名</button>
+      <button class="tab" data-view="students">学生</button>
+      <button class="tab" data-view="history">统计</button>
+      <button class="tab" data-view="data">数据</button>
+      <button class="tab" data-view="settings">设置</button>
+    </nav>
+    <section id="view-rollcall" class="view active"></section>
+    <section id="view-students" class="view"></section>
+    <section id="view-history" class="view"></section>
+    <section id="view-data" class="view"></section>
+    <section id="view-settings" class="view"></section>
+  </main>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="vendor/jszip.min.js"></script>
+  <script src="db.js"></script>
+  <script src="algorithm.js"></script>
+  <script src="importer.js"></script>
+  <script src="exporter.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
