@@ -1,13 +1,23 @@
 // 点名算法配置：难度区间使用班级位次分位数，不使用成绩率。
 const ALGORITHM_DEFAULTS = {
-  configVersion: 3, candidateCount: 3, historyWindow: 20,
-  recentDecay: 0.58, recoveryPerCall: 0.12, focusBoost: 1.65, basisExamCount: 3, historyRule: 'twoMonths', lowScorePercentile: 0.60, zeroRecentBoost: 1.5, shortcutClasses: [],
+  configVersion: 3, candidateCount: 3,
+  recentDecay: 0.58, recoveryPerCall: 0.12, focusBoost: 1.65, basisExamCount: 3, historyRule: 'twoMonths', sameDayRepeat: 'block', lowScorePercentile: 0.60, zeroRecentBoost: 1.5, shortcutClasses: [],
   difficulty: {
     1: { minPercentile: 0.60, maxPercentile: 1.00 },
     2: { minPercentile: 0.25, maxPercentile: 0.75 },
     3: { minPercentile: 0.00, maxPercentile: 0.35 }
   }
 };
+// “近期点名次数”规则：设置页下拉与点名页说明共用同一份定义，保证两处文案一致。
+const HISTORY_RULE_OPTIONS = [['all','总计'],['calls20','近20次点名'],['calls30','近30次点名'],['calls50','近50次点名'],['week','近1周'],['twoWeeks','近2周'],['month','近1月'],['twoMonths','近2月'],['threeMonths','近3月'],['halfYear','近半年']];
+const HISTORY_RULE_DAYS = { week:7, twoWeeks:14, month:30, twoMonths:60, threeMonths:90, halfYear:182 };
+function historyRuleLabel(rule) { const found = HISTORY_RULE_OPTIONS.find(([value]) => value === String(rule)); return found ? found[1] : '近2月'; }
+function historyRuleWindow(rule) {
+  const value = String(rule || 'twoMonths');
+  if (value.startsWith('calls')) return `最近 ${Math.max(1, Number(value.slice(5)) || 20)} 次点名记录`;
+  const days = HISTORY_RULE_DAYS[value];
+  return days ? `最近 ${days} 天内的点名记录` : '全部历史点名记录';
+}
 function mergeConfig(saved) {
   const source = saved || {};
   const savedDifficulty = source.difficulty || {};
@@ -21,6 +31,7 @@ function mergeConfig(saved) {
     difficulty[key] = { minPercentile:safeMin, maxPercentile:safeMax };
   });
   const next = { ...ALGORITHM_DEFAULTS, ...source, configVersion: 3, difficulty };
+  delete next.historyWindow; // 早期版本的“最近点名统计窗口”，已无任何作用
   const numeric=(value,fallback)=>Number.isFinite(Number(value))?Number(value):fallback;
   next.candidateCount=Math.max(1,Math.min(12,numeric(next.candidateCount,ALGORITHM_DEFAULTS.candidateCount)));
   next.recentDecay=Math.max(0,Math.min(0.999,numeric(next.recentDecay,ALGORITHM_DEFAULTS.recentDecay)));
@@ -31,6 +42,7 @@ function mergeConfig(saved) {
   next.zeroRecentBoost=Math.max(0,numeric(next.zeroRecentBoost,ALGORITHM_DEFAULTS.zeroRecentBoost));
   next.shortcutClasses = Array.isArray(next.shortcutClasses) ? next.shortcutClasses : [];
   next.historyRule = ['calls20','calls30','calls50','week','twoWeeks','month','twoMonths','threeMonths','halfYear','all'].includes(String(next.historyRule)) ? String(next.historyRule) : 'twoMonths';
+  next.sameDayRepeat = String(next.sameDayRepeat) === 'allow' ? 'allow' : 'block';
   return next;
 }
 function recentHistoryEntries(history, studentId, config) {
@@ -38,7 +50,7 @@ function recentHistoryEntries(history, studentId, config) {
   const rule = String(config?.historyRule || 'twoMonths');
   if (rule === 'all') return rows;
   if (rule.startsWith('calls')) return rows.slice(0, Math.max(1, Number(rule.slice(5)) || 20));
-  const days = rule === 'week' ? 7 : rule === 'twoWeeks' ? 14 : rule === 'month' ? 30 : rule === 'twoMonths' ? 60 : rule === 'threeMonths' ? 90 : rule === 'halfYear' ? 182 : 60;
+  const days = HISTORY_RULE_DAYS[rule] || 60;
   const cutoff = Date.now() - days * 86400000;
   return rows.filter(x => Date.parse(x.at) >= cutoff);
 }
@@ -70,7 +82,9 @@ function recommendationScore(student, history, config) {
   const cooling = Math.max(0.2, 1 - decay * Math.max(0.1, config.recoveryPerCall * 3));
   const rateFactor = Number.isFinite(Number(student.scoreRate)) ? 0.75 + Number(student.scoreRate) * 0.5 : 1;
   const lowScoreBoost = student.lowScoreNoRecent ? Number(config.zeroRecentBoost || 1) : 1;
-  return Math.max(0.0001, cooling * (student.focus ? config.focusBoost : 1) * rateFactor * lowScoreBoost);
+  // 特别关注的学生：除非手动取消关注，否则不参与“越点越低”的近期冷却衰减
+  const recencyFactor = student.focus ? 1 : cooling;
+  return Math.max(0.0001, recencyFactor * (student.focus ? config.focusBoost : 1) * rateFactor * lowScoreBoost);
 }
 function weightedSample(scored, count) {
   const pool = [...scored], selected = [];
@@ -84,10 +98,11 @@ function weightedSample(scored, count) {
 }
 function chooseCandidates(students, history, absences, config) {
   const absent = new Set(absences.filter(x => x.date === localDate()).map(x => x.studentId));
-  // Hard rule: a student with a formal call record from today cannot be selected again today.
+  // 规则：标记“不点名”的学生始终不参与；当天点过的学生默认不再进入候选，可在设置页改为允许。
   const today = localDate();
   const calledToday = new Set(history.filter(x => x.studentId && timestampLocalDate(x.at) === today).map(x => x.studentId));
-  const available = rankedPool(students.filter(s => !absent.has(s.id) && !calledToday.has(s.id)));
+  const allowSameDayRepeat = String(config.sameDayRepeat) === 'allow';
+  const available = rankedPool(students.filter(s => !absent.has(s.id) && !s.noCall && (allowSameDayRepeat || !calledToday.has(s.id))));
   const range = difficultyRange(available.length, config.currentDifficulty || 2, config);
   const eligible = available.slice(range.start - 1, range.end);
   const scored = eligible.map(student => ({ student, score: recommendationScore(student, history, config),
