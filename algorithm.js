@@ -98,7 +98,7 @@ function weightedSample(scored, count) {
 }
 function chooseCandidates(students, history, absences, config) {
   const absent = new Set(absences.filter(x => x.date === localDate()).map(x => x.studentId));
-  // 规则：标记“不点名”的学生始终不参与；当天点过的学生默认不再进入候选，可在设置页改为允许。
+// 规则：标记“不参与点名”的学生始终不进入候选；当天点过的学生默认不再进入候选，可在设置页改为允许。
   const today = localDate();
   const calledToday = new Set(history.filter(x => x.studentId && timestampLocalDate(x.at) === today).map(x => x.studentId));
   const allowSameDayRepeat = String(config.sameDayRepeat) === 'allow';

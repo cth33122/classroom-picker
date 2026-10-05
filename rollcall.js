@@ -26,10 +26,10 @@ function refreshCandidatesAfterSettings(){
 
 function renderRollcall(){
   const inClass=state.students.filter(s=>s.className===state.currentClass),rankMap=averageRankMap(inClass);
-  // 候选是生成时的快照，标签等实时状态一律回查当前学生数据；已标记“不点名”的从列表里去掉
+  // 候选是生成时的快照，标签等实时状态一律回查当前学生数据；已标记“不参与点名”的从列表里去掉
   const liveOf=c=>state.students.find(x=>x.id===c.student.id)||c.student;
   const visible=state.candidates.filter(c=>c.student.id===state.selectedCandidate||!liveOf(c).noCall);
-  const emptyText=state.candidates.length?(visible.length?'':'候选中的学生都已被标记为“不点名”。'):'选择难度后生成候选';
+  const emptyText=state.candidates.length?(visible.length?'':'候选中的学生都已被标记为“不参与点名”。'):'选择难度后生成候选';
   $('#view-rollcall').innerHTML=`<div class="panel hero">\
 <div class="class-name">${inClass.length?`本班 ${inClass.length} 人`:'还没有学生资料'}</div>\
 <div class="difficulty-buttons">\
@@ -47,12 +47,12 @@ function renderRollcall(){
 <small>${avg===null?'—':`${(avg*100).toFixed(1)}%`} · 班次 ${rank??'—'}</small>\
 </span>\
 <span class="score">近期点名次数：${c.recentCount}</span>\
-</button>`}).join(''):`<div class="empty">${emptyText}</div>`}</div>${visible.length===0&&state.currentClass?`<p class="hint">${String(state.settings.sameDayRepeat)==='allow'?'当天已点名的学生也可以再次进入候选。':'当天已点名的学生不会再次进入候选。'}标记为“不点名”的学生不参与抽选。</p>`:''}${state.selectedCandidate?'<button class="danger change-student" id="markSelectedAbsent">缺席</button>':''}</div>`;
+</button>`}).join(''):`<div class="empty">${emptyText}</div>`}</div>${visible.length===0&&state.currentClass?`<p class="hint">${String(state.settings.sameDayRepeat)==='allow'?'当天已点名的学生也可以再次进入候选。':'当天已点名的学生不会再次进入候选。'}标记为“不参与点名”的学生不会进入候选。</p>`:''}${state.selectedCandidate?'<button class="danger change-student" id="markSelectedAbsent">缺席</button>':''}</div>`;
     
   const hint=document.createElement('p');
   hint.className='hint rollcall-hint';
   const allowRepeat=String(state.settings.sameDayRepeat)==='allow';
-  hint.textContent=`近期点名次数 = 该生${historyRuleWindow(state.settings.historyRule)}的条数，规则与设置页“近期点名次数统计规则”一致（当前：${historyRuleLabel(state.settings.historyRule)}）。近期被点得越多，抽中权重越低；特别关注的学生不受该衰减影响。当天允许重复点名：${allowRepeat?'是':'否'}（${allowRepeat?'已点名的学生当天仍可再次进入候选':'已点名的学生当天不再进入候选'}）；标记为“不点名”的学生不参与抽选。`;
+  hint.textContent=`近期点名次数 = 该生${historyRuleWindow(state.settings.historyRule)}的条数，规则与设置页“近期点名次数统计规则”一致（当前：${historyRuleLabel(state.settings.historyRule)}）。近期被点得越多，抽中权重越低；特别关注的学生不受该衰减影响。当天允许重复点名：${allowRepeat?'是':'否'}（${allowRepeat?'已点名的学生当天仍可再次进入候选':'已点名的学生当天不再进入候选'}）；标记为“不参与点名”的学生不会进入候选。`;
   $('#view-rollcall').appendChild(hint);
   $$('[data-difficulty]').forEach(b=>b.onclick=()=>{state.difficulty=Number(b.dataset.difficulty);state.selectedCandidate=null;recommend();});$$('.candidate').forEach(b=>b.onclick=()=>selectStudent(b.dataset.student));$('#markSelectedAbsent')?.addEventListener('click',markSelectedAbsent);
 }

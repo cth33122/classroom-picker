@@ -6,37 +6,62 @@ async function handleImport(e){const file=e.target.files[0];
   if(!file)return;
   const box=$('#importResult');
   box.textContent='正在读取…';
-  try{const result=await importGrades(file);if(!result.students.length){box.innerHTML='<p class="danger-text">未识别到学生记录，请检查文件格式。</p>';return;}state.pendingImport={file,result};box.innerHTML=`<div class="panel">\
-<h3>请确认考试信息</h3>\
+  try{const result=await importGradeBooks(file);if(!result.exams.length){box.innerHTML='<p class="danger-text">未识别到学生记录，请检查文件格式。</p>';return;}state.pendingImport={file,exams:result.exams};box.innerHTML=importPreviewHtml(result);$('#saveExamBtn').addEventListener('click',savePendingExams);}catch(err){box.innerHTML=`<p class="danger-text">读取失败：${esc(err.message)}</p>`;}}
+
+// 导入确认面板：每场考试一张卡片。多场考试时可改名称/日期/总分，并取消勾选不需要的工作表。
+function importPreviewHtml(result){
+  const exams=result.exams,multi=exams.length>1,existing=new Set(state.exams.map(x=>String(x.date))),seen=new Set(),totalRecords=exams.reduce((n,x)=>n+x.students.length,0);
+  const cards=exams.map((exam,index)=>{
+    const date=String(exam.source.date),clash=existing.has(date)||seen.has(date);seen.add(date);
+    const warn=exam.warnings.slice(0,3).map(esc).join('；');
+    return `<div class="exam-import-card${clash?' exam-import-clash':''}" data-exam-index="${index}">\
+<div class="exam-import-head">${multi?'<label class="exam-import-pick"><input type="checkbox" class="exam-include" checked> 导入</label>':''}<strong>${esc(exam.source.exercise)}</strong><span class="badge">${exam.students.length}条</span></div>\
 <div class="grid">\
 <div class="field">\
 <label>考试名称</label>\
-<input id="examName" value="${esc(result.source.exercise)}">\
+<input class="exam-name" value="${esc(exam.source.exercise)}">\
 </div>\
 <div class="field">\
 <label>考试时间</label>\
-<input id="examDate" type="date" value="${esc(result.source.date)}">\
+<input class="exam-date" type="date" value="${esc(date)}">\
 </div>\
 <div class="field">\
 <label>考试总分</label>\
-<input id="examTotalScore" type="number" min="1" step="0.01" value="${Number(result.totalScore)||100}">\
+<input class="exam-total" type="number" min="1" step="0.01" value="${Number(exam.totalScore)||100}">\
 </div>\
 </div>\
-<p class="hint">识别到 ${result.students.length} 条记录。请确认考试名称、时间和总分后保存。</p>\
-<button class="primary" id="saveExamBtn">确认并保存考试</button>${result.warnings.length?`<p class="hint danger-text">提示：${result.warnings.slice(0,8).map(esc).join('；')}${result.warnings.length>8?'…':''}</p>`:''}</div>`;$('#saveExamBtn').addEventListener('click',savePendingExam);}catch(err){box.innerHTML=`<p class="danger-text">读取失败：${esc(err.message)}</p>`;}}
+<p class="hint">${multi?`来源工作表：${esc(exam.sheetNames.join('、'))}<br>`:''}${warn?`<span class="danger-text">提示：${warn}</span>`:'成绩、班次、段次将一并保存。'}</p>\
+${clash?'<p class="hint danger-text">该日期已存在考试记录，保存时将自动跳过。</p>':''}\
+</div>`;
+  }).join('');
+  return `<div class="panel">\
+<h3>请确认考试信息</h3>\
+<p class="hint">共识别 ${exams.length} 场考试、${totalRecords} 条记录${multi?'。可修改名称、日期、总分，或取消勾选不需要的工作表。':'。'}</p>\
+<div class="exam-import-list">${cards}</div>\
+${result.warnings.length?`<p class="hint danger-text">提示：${result.warnings.slice(0,6).map(esc).join('；')}${result.warnings.length>6?'…':''}</p>`:''}\
+<button class="primary" id="saveExamBtn">确认并保存${multi?` ${exams.length} 场考试`:'考试'}</button>\
+</div>`;
+}
 
-async function handleRestore(e){const file=e.target.files[0];if(!file)return;try{const data=JSON.parse(await file.text());if(!data||!Array.isArray(data.students)||!Array.isArray(data.history))throw new Error('备份文件结构不完整');if(!confirm('恢复备份会覆盖当前本地数据，确定继续吗？'))return;for(const key of ['students','history','settings','absences','meta','exams','examResults'])await DB.replace(key,Array.isArray(data[key])?data[key]:[]);await reload();toast('备份已恢复');}catch(err){toast(`恢复失败：${err.message}`);}}
+async function handleRestore(e){const file=e.target.files[0];if(!file)return;try{const data=JSON.parse(await file.text());if(!data||!Array.isArray(data.students)||!Array.isArray(data.history))throw new Error('备份文件结构不完整');if(!confirm('恢复备份会覆盖当前本地数据，确定继续吗？'))return;for(const key of ['students','history','settings','absences','meta','exams','examResults'])await DB.replace(key,Array.isArray(data[key])?data[key]:[]);await refreshAfterDataImport();toast('备份已恢复');}catch(err){toast(`恢复失败：${err.message}`);}}
 
-async function clearAll(){if(!confirm('确定清除全部学生、考试、历史和设置吗？此操作不可撤销。'))return;for(const key of ['students','history','settings','absences','meta','exams','examResults'])await DB.clear(key);state.currentClass='';state.candidates=[];await reload();toast('本地数据已清除');}
+async function clearAll(){if(!confirm('确定清除全部学生、考试、历史和设置吗？此操作不可撤销。'))return;for(const key of ['students','history','settings','absences','meta','exams','examResults'])await DB.clear(key);state.currentClass='';state.candidates=[];await refreshAfterDataImport();toast('本地数据已清除');}
 
-async function savePendingExam(){const pending=state.pendingImport;
+async function savePendingExams(){const pending=state.pendingImport;
   if(!pending)return;
-  const name=$('#examName').value.trim()||pending.result.source.exercise,date=$('#examDate').value||pending.result.source.date,totalScore=Number($('#examTotalScore')?.value||pending.result.totalScore);
-  if(!Number.isFinite(totalScore)||totalScore<=0){toast('考试总分必须大于0');return;}if(state.exams.some(e=>String(e.date)===String(date))){toast(`考试日期 ${date} 已存在，拒绝重复导入`);return;}const examId=`exam-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,exam={id:examId,name,date,totalScore,weight:1,sourceFile:pending.file.name,importedAt:new Date().toISOString(),count:pending.result.students.length};
-  await DB.put('exams',exam);
-  for(const incoming of pending.result.students){const old=state.students.find(s=>s.id===incoming.id);await DB.put('examResults',{id:`${examId}:${incoming.id}`,examId,studentId:incoming.id,identityKey:incoming.identityKey||incoming.id,result:incoming});await DB.put('students',old?{...old,...incoming,focus:old.focus===true}:incoming);}state.pendingImport=null;
-  await reload();
-  toast(`已保存考试：${name}`);
+  const entries=$$('#importResult .exam-import-card').map(card=>{const exam=pending.exams[Number(card.dataset.examIndex)];return {exam,include:pending.exams.length<2?true:Boolean(card.querySelector('.exam-include')?.checked),name:(card.querySelector('.exam-name')?.value||'').trim()||exam.source.exercise,date:card.querySelector('.exam-date')?.value||exam.source.date,totalScore:Number(card.querySelector('.exam-total')?.value||exam.totalScore)};}).filter(x=>x.include);
+  if(!entries.length){toast('请至少勾选一场考试');return;}
+  const invalid=entries.find(x=>!Number.isFinite(x.totalScore)||x.totalScore<=0);if(invalid){toast(`“${invalid.name}”的考试总分必须大于0`);return;}
+  const savedDates=new Set(state.exams.map(x=>String(x.date))),skipped=[];let saved=0,recordCount=0;
+  for(const entry of entries){
+    if(savedDates.has(String(entry.date))){skipped.push(`${entry.name}（${entry.date}）`);continue;}
+    const examId=`exam-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,exam={id:examId,name:entry.name,date:entry.date,totalScore:entry.totalScore,weight:1,sourceFile:pending.file.name,importedAt:new Date().toISOString(),count:entry.exam.students.length};
+    await DB.put('exams',exam);
+    for(const incoming of entry.exam.students){const old=state.students.find(s=>s.id===incoming.id);await DB.put('examResults',{id:`${examId}:${incoming.id}`,examId,studentId:incoming.id,identityKey:incoming.identityKey||incoming.id,result:incoming});await DB.put('students',old?{...old,...incoming,focus:old.focus===true}:incoming);}
+    savedDates.add(String(entry.date));saved++;recordCount+=entry.exam.students.length;
+  }
+  await refreshAfterDataImport();
+  toast(saved?`已保存 ${saved} 场考试、${recordCount} 条记录${skipped.length?`；跳过日期重复：${skipped.join('、')}`:''}`:`未保存新考试，日期重复：${skipped.join('、')}`);
   }
 
 function openExamEditor(id){
@@ -84,7 +109,7 @@ function renderData(){
   const exams=orderedExams();
   $('#view-data').innerHTML=`<div class="panel">\
 <h2>导入成绩文件</h2>\
-<p class="hint">支持“数智作业”与“学生小题得分明细”两类 xlsx。每次导入都会新增一条考试记录。</p>\
+<p class="hint">支持“数智作业”“学生小题得分明细”等 xlsx。若一个工作簿含多个以“考试名称-日期”（如 周测8-20270124）命名的工作表，会分别导入为多场考试；学生身份以“班级+姓名”为准，学号/考号可选。</p>\
 <div class="data-import-actions">\
 <input id="xlsxInput" class="file-input" type="file" accept=".xlsx">\
 <button class="secondary" id="downloadTemplateBtn">下载成绩导入模板</button>\
@@ -110,11 +135,13 @@ function renderData(){
 <div class="panel">\
 <h2>备份与恢复</h2>\
 <div class="actions">\
-<button class="secondary" id="backupBtn">导出完整备份</button>\
 <button class="secondary" id="historyExportBtn">导出点名历史</button>\
+<button class="secondary" id="exportGradesBtn">导出成绩表格</button>\
 </div>\
+<p class="hint">“导出成绩表格”生成 xlsx，每场考试一个工作表（工作表名为“考试名称-日期”），内容为姓名、班级、成绩、班次、段次、考号，可直接再导入本程序。</p>\
 <div class="backup-picker">\
-<label class="secondary">选择备份<input id="backupInput" type="file" accept=".json" hidden>\
+<button class="secondary" id="backupBtn">导出完整备份</button>\
+<label class="secondary">导入备份文件<input id="backupInput" type="file" accept=".json" hidden>\
 </label>\
 </div>\
 </div>\
@@ -124,5 +151,5 @@ function renderData(){
 <button class="danger" id="clearBtn">清除全部本地数据</button>\
 </div>`;
     
-  $('#xlsxInput')?.addEventListener('change',handleImport);$('#downloadTemplateBtn')?.addEventListener('click',downloadGradeTemplate);$('#backupBtn')?.addEventListener('click',exportBackup);$('#historyExportBtn')?.addEventListener('click',exportHistory);$('#backupInput')?.addEventListener('change',handleRestore);$('#clearBtn')?.addEventListener('click',clearAll);$$('[data-open-exam]').forEach(b=>b.onclick=()=>openExamEditor(b.dataset.openExam));
+  $('#xlsxInput')?.addEventListener('change',handleImport);$('#downloadTemplateBtn')?.addEventListener('click',downloadGradeTemplate);$('#backupBtn')?.addEventListener('click',exportBackup);$('#historyExportBtn')?.addEventListener('click',exportHistory);$('#exportGradesBtn')?.addEventListener('click',exportGrades);$('#backupInput')?.addEventListener('change',handleRestore);$('#clearBtn')?.addEventListener('click',clearAll);$$('[data-open-exam]').forEach(b=>b.onclick=()=>openExamEditor(b.dataset.openExam));
 }

@@ -1,6 +1,6 @@
 // 入口：视图分发、数据加载、service worker 注册
 
-const APP_VERSION = 'v77';
+const APP_VERSION = 'v85';
 
 $$('.tab').forEach(tab=>tab.addEventListener('click',()=>{const wasStudents=state.view==='students';state.view=tab.dataset.view;if(tab.dataset.view==='students'&&wasStudents&&state.studentDetail)state.studentDetail=null;render();}));
 window.addEventListener('load',async()=>{if('serviceWorker'in navigator){const hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!window.__swReloaded){window.__swReloaded=true;location.reload();}});navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(()=>{});}try{await reload();}catch(err){toast(`本地数据初始化失败：${err.message}`);}let deferred;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;$('#installBtn').hidden=false;});$('#installBtn').addEventListener('click',async()=>{if(deferred){deferred.prompt();deferred=null;}});});
@@ -35,4 +35,19 @@ async function reload(){
   state.currentClass=wanted||available[0]||'';
   const exams=orderedExams();if(!exams.some(e=>e.id===state.studentCurrentExamId))state.studentCurrentExamId=exams[0]?.id||'';
   if(!state.studentSelectionInitialized)state.studentPreviousExamId=previousExamIdFor(state.studentCurrentExamId);render();
+}
+
+// 丢弃与旧数据绑定的临时选择（候选、学生详情、考试选择、待确认导入）
+function resetViewState(){state.candidates=[];state.selectedCandidate=null;state.studentDetail=null;state.historyStudentId='';state.studentSelectionInitialized=false;state.studentCurrentExamId='';state.studentPreviousExamId='';state.pendingImport=null;}
+
+// 重绘全部页面：当前页交给 render()，其余页面各自重新生成内容
+function renderAllViews(){render();for(const [name,fn] of [['rollcall',renderRollcall],['students',renderStudents],['history',renderHistory],['data',renderData],['settings',renderSettings]])if(name!==state.view)fn();}
+
+// 导入成绩文件、恢复备份、清除数据后调用：重置临时状态 → 重新读库 → 重绘所有页面
+async function refreshAfterDataImport(){
+  const hadCandidates=state.candidates.length>0&&!state.selectedCandidate;
+  resetViewState();
+  await reload();
+  renderAllViews();
+  if(hadCandidates&&state.currentClass&&state.students.some(s=>s.className===state.currentClass))recommend();
 }
