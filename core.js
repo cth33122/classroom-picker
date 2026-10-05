@@ -13,6 +13,8 @@ function relativeCallTime(at){const stamp=Date.parse(at);if(!Number.isFinite(sta
 function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
 
 function classes(){return [...new Set(state.students.map(s=>normalizeClassName(s.className)).filter(c=>c&&c!=='未分班'))].sort();}
+// 切换班级并记住选择，刷新后仍停留在该班级
+function setCurrentClass(value){state.currentClass=normalizeClassName(value);DB.put('meta',{id:'currentClass',value:state.currentClass}).catch(()=>{});}
 
 function orderedExams(){return [...state.exams].sort((a,b)=>String(b.date).localeCompare(String(a.date))||String(b.importedAt).localeCompare(String(a.importedAt)));}
 

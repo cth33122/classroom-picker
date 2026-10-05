@@ -18,10 +18,10 @@ button { font:inherit; cursor:pointer; }.primary,.secondary,.danger { min-height
 .student-row > span:first-child { min-width:0; }
 .student-row > span:first-child small { display:inline-block; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom; }
 .student-row .student-link { max-width:100%; overflow-wrap:anywhere; }
-.student-row .rank-info { min-width:0; white-space:nowrap; }
+.student-row .rank-info { min-width:0; }
 .student-row > span:last-child { display:block; gap:4px; align-items:center; justify-content:initial; }
 .student-row > span:last-child button { min-width:0; min-height:38px; padding:8px 7px; white-space:nowrap; }
-.student-row { grid-template-columns:112fr 103fr 100fr; }
+.student-row { grid-template-columns:100fr 129fr 86fr; }
 .student-row > span { min-width:0; }
 .student-row .average-info { min-width:0; overflow:hidden; white-space:nowrap; }
 .average-info { font-size:15px; font-weight:700; color:var(--teal); }
@@ -55,7 +55,7 @@ button { font:inherit; cursor:pointer; }.primary,.secondary,.danger { min-height
 .exam-name-list { display:grid; gap:8px; }.exam-name-item { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; padding:13px 14px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); text-align:left; }.exam-name-item:hover { border-color:var(--teal); background:var(--mint); }.exam-name-item small { color:var(--muted); white-space:nowrap; }
 .backup-picker { display:flex; justify-content:center; margin-top:10px; }.backup-picker label { display:inline-flex; align-items:center; justify-content:center; min-width:120px; text-align:center; }
 .modal-backdrop { position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(10,30,26,.42); }.modal-card { width:min(520px,100%); max-height:calc(100vh - 32px); overflow:auto; padding:18px; border-radius:8px; background:var(--paper); box-shadow:0 18px 50px rgba(0,0,0,.22); }.modal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }.modal-header h2 { margin:0; }.modal-close { border:0; background:transparent; color:var(--ink); font-size:26px; }
-.table-header { position:sticky; top:58px; z-index:1; display:grid; align-items:center; gap:8px; padding:10px 0; background:var(--paper); border-bottom:1px solid var(--line); font-size:13px; font-weight:800; }.table-header button { min-height:34px; border:0; padding:6px 0; background:transparent; color:var(--ink); font-weight:800; text-align:left; }.student-table-header { grid-template-columns:112fr 103fr 100fr; }.history-table-header,.history-record-header { grid-template-columns:80fr 95fr 90fr; }.student-section-title { margin:10px 0 8px; color:var(--muted); font-size:13px; font-weight:700; }.chart-actions { display:flex; justify-content:center; gap:8px; margin-top:10px; }.chart-large-wrap { overflow:auto; max-height:calc(100vh - 180px); border:1px solid var(--line); border-radius:7px; background:#fff; }.chart-large-wrap canvas { display:block; }
+.table-header { position:sticky; top:58px; z-index:1; display:grid; align-items:center; gap:8px; padding:10px 0; background:var(--paper); border-bottom:1px solid var(--line); font-size:13px; font-weight:800; }.table-header button { min-height:34px; border:0; padding:6px 0; background:transparent; color:var(--ink); font-weight:800; text-align:left; }.student-table-header { grid-template-columns:100fr 129fr 86fr; }.history-table-header,.history-record-header { grid-template-columns:80fr 95fr 90fr; }.student-section-title { margin:10px 0 8px; color:var(--muted); font-size:13px; font-weight:700; }.chart-actions { display:flex; justify-content:center; gap:8px; margin-top:10px; }.chart-large-wrap { overflow:auto; max-height:calc(100vh - 180px); border:1px solid var(--line); border-radius:7px; background:#fff; }.chart-large-wrap canvas { display:block; }
 .history-section-title { margin:0 0 10px; color:var(--muted); font-size:13px; font-weight:700; }
 .detail-focus { color:var(--ink); background:var(--mint); }.detail-focus.on { color:#fff; background:var(--danger); }
 .student-section-title,.history-section-title,.table-header { font-size:14px; }
