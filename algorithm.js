@@ -15,14 +15,22 @@ function mergeConfig(saved) {
   [1, 2, 3].forEach(key => {
     const fallback = ALGORITHM_DEFAULTS.difficulty[key];
     const savedRange = savedDifficulty[key] || {};
-    difficulty[key] = {
-      minPercentile: Number.isFinite(Number(savedRange.minPercentile)) ? Number(savedRange.minPercentile) : fallback.minPercentile,
-      maxPercentile: Number.isFinite(Number(savedRange.maxPercentile)) ? Number(savedRange.maxPercentile) : fallback.maxPercentile
-    };
+    const min=Number(savedRange.minPercentile),max=Number(savedRange.maxPercentile);
+    const safeMin=Number.isFinite(min)?Math.max(0,Math.min(1,min)):fallback.minPercentile;
+    const safeMax=Number.isFinite(max)?Math.max(safeMin,Math.min(1,max)):fallback.maxPercentile;
+    difficulty[key] = { minPercentile:safeMin, maxPercentile:safeMax };
   });
   const next = { ...ALGORITHM_DEFAULTS, ...source, configVersion: 3, difficulty };
+  const numeric=(value,fallback)=>Number.isFinite(Number(value))?Number(value):fallback;
+  next.candidateCount=Math.max(1,Math.min(12,numeric(next.candidateCount,ALGORITHM_DEFAULTS.candidateCount)));
+  next.recentDecay=Math.max(0,Math.min(0.999,numeric(next.recentDecay,ALGORITHM_DEFAULTS.recentDecay)));
+  next.recoveryPerCall=Math.max(0,Math.min(1,numeric(next.recoveryPerCall,ALGORITHM_DEFAULTS.recoveryPerCall)));
+  next.focusBoost=Math.max(0,numeric(next.focusBoost,ALGORITHM_DEFAULTS.focusBoost));
+  next.basisExamCount=Math.max(1,Math.min(50,numeric(next.basisExamCount,ALGORITHM_DEFAULTS.basisExamCount)));
+  next.lowScorePercentile=Math.max(0,Math.min(1,numeric(next.lowScorePercentile,ALGORITHM_DEFAULTS.lowScorePercentile)));
+  next.zeroRecentBoost=Math.max(0,numeric(next.zeroRecentBoost,ALGORITHM_DEFAULTS.zeroRecentBoost));
   next.shortcutClasses = Array.isArray(next.shortcutClasses) ? next.shortcutClasses : [];
-  next.historyRule = ['calls20','calls50','week','twoWeeks','month','twoMonths','threeMonths','halfYear','all'].includes(String(next.historyRule)) ? String(next.historyRule) : 'twoMonths';
+  next.historyRule = ['calls20','calls30','calls50','week','twoWeeks','month','twoMonths','threeMonths','halfYear','all'].includes(String(next.historyRule)) ? String(next.historyRule) : 'twoMonths';
   return next;
 }
 function recentHistoryEntries(history, studentId, config) {
@@ -76,7 +84,10 @@ function weightedSample(scored, count) {
 }
 function chooseCandidates(students, history, absences, config) {
   const absent = new Set(absences.filter(x => x.date === localDate()).map(x => x.studentId));
-  const available = rankedPool(students.filter(s => !absent.has(s.id)));
+  // Hard rule: a student with a formal call record from today cannot be selected again today.
+  const today = localDate();
+  const calledToday = new Set(history.filter(x => x.studentId && timestampLocalDate(x.at) === today).map(x => x.studentId));
+  const available = rankedPool(students.filter(s => !absent.has(s.id) && !calledToday.has(s.id)));
   const range = difficultyRange(available.length, config.currentDifficulty || 2, config);
   const eligible = available.slice(range.start - 1, range.end);
   const scored = eligible.map(student => ({ student, score: recommendationScore(student, history, config),
@@ -88,5 +99,10 @@ function chooseCandidates(students, history, absences, config) {
     item.score = recommendationScore(item.student, history, config);
   });
   return weightedSample(scored, Math.min(config.candidateCount, scored.length));
+}
+function timestampLocalDate(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
 function localDate() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
