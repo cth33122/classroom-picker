@@ -36,7 +36,7 @@ button { font:inherit; cursor:pointer; }.primary,.secondary,.danger { min-height
 .difficulty-button { min-height:56px; font-size:17px; letter-spacing:1px; }
 .difficulty-button.active { color:#fff; background:var(--teal); }
 .candidate-panel-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:8px; }
-.candidate-panel-head h3 { margin:0; }
+.candidate-panel-head h2 { margin:0; }
 .no-call-badge { color:var(--warn); background:#fef3c7; }
 .detail-nocall { color:var(--ink); background:var(--mint); }.detail-nocall.on { color:#fff; background:var(--warn); }
 .change-student { display:block; width:min(120px,100%); margin:14px auto 0; }
@@ -44,7 +44,6 @@ button { font:inherit; cursor:pointer; }.primary,.secondary,.danger { min-height
 .selected-actions .change-student { width:min(120px,100%); margin:0; }
 #view-rollcall { display:flex; flex-direction:column; padding-bottom:0; }
 .rollcall-body { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
-.rollcall-body > .panel { margin-top:6px; margin-bottom:6px; }
 .rollcall-body > .seat-panel { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
 .rollcall-body > .seat-panel.seat-panel-collapsed { flex:0 0 auto; }
 .seat-panel-collapsed .seat-panel-head { margin-bottom:0; }
@@ -59,7 +58,7 @@ button { font:inherit; cursor:pointer; }.primary,.secondary,.danger { min-height
 .candidate-list { max-height:32vh; overflow:auto; grid-template-columns:repeat(auto-fit,minmax(max(140px,calc((100% - (var(--cand-cols,1) - 1) * 10px) / var(--cand-cols,1))),1fr)); }
 /* 座位表 */
 .seat-panel-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px; }
-.seat-panel-head h3 { margin:0; }
+.seat-panel-head h2 { margin:0; }
 .seat-chart { --seat-sep:2px; --seat-gap:4px; display:flex; flex-direction:column; gap:4px; min-height:0; overflow:auto; }
 .seat-podium-row { display:grid; align-items:stretch; gap:var(--seat-gap,4px); }
 .seat-podium { display:flex; align-items:center; justify-content:center; min-height:34px; padding:3px 8px; border:1px solid var(--mint); border-radius:5px; background:var(--mint); color:var(--teal); font-size:12px; font-weight:700; letter-spacing:4px; }
