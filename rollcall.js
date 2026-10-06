@@ -51,7 +51,6 @@ function renderRollcall(){
 <button class="secondary seat-edit-btn" id="editSeatBtn">编辑座位</button>\
 </div>\
 </div>\
-${seatColorLegendHtml()}\
 ${seatChartHtml()}\
 </div>`:`<div class="panel seat-panel seat-panel-collapsed">\
 <div class="seat-panel-head">\
@@ -76,7 +75,7 @@ ${seatedCount>0?'':'<div class="rollcall-gap"></div>'}\
 <small>${avg===null?'—':`${(avg*100).toFixed(1)}%`} · 班次 ${rank??'—'}</small>\
 <small class="candidate-meta">近期点名次数：${c.recentCount}</small>\
 </span>\
-</button>`}).join(''):`<div class="empty">${emptyText}</div>`}</div>${visible.length===0&&state.currentClass?`<p class="hint">${String(state.settings.sameDayRepeat)==='allow'?'当天已点名的学生也可以再次进入候选。':'当天已点名的学生不会再次进入候选。'}标记为“不参与点名”的学生不会进入候选。</p>`:''}${state.selectedCandidate?'<div class="selected-actions"><button class="danger change-student" id="markSelectedAbsent">缺席</button><button class="secondary change-student" id="undoCallBtn">撤销本次点名</button></div>':''}</div>\
+</button>`}).join(''):`<div class="empty">${emptyText}</div>`}</div>${visible.length===0&&state.currentClass?`<p class="hint">${String(state.settings.sameDayRepeat)==='allow'?'当天已点名的学生也可以再次进入候选。':'当天已点名的学生不会再次进入候选。'}标记为“不参与点名”的学生不会进入候选。</p>`:''}${state.selectedCandidate?'<div class="selected-actions"><button class="danger change-student" id="markSelectedAbsent">缺席</button><button class="secondary change-student" id="undoCallBtn">撤销</button></div>':''}</div>\
 </div>\
 <div class="panel hero rollcall-actions">\
 <div class="rollcall-actions-head">\

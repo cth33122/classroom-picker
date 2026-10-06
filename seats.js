@@ -98,6 +98,7 @@ function seatCellHtml(seat,stats,extraStyle,extraClass){
   if(stu&&stu.noCall)classes.push('seat-nocall');
   if(stu&&calledToday(stu.id))classes.push('seat-called');
   const color=stu?seatColorFor(stu,stats,state.seatColorMode||'none'):'';
+  if(color)classes.push('seat-tinted');
   const text=stu?(stu.displayName||stu.name):(seat.kind==='side'?(seat.label||'讲台旁'):'');
   const title=stu?`${stu.name}（${seatLabel(seat)}）`:`${seatLabel(seat)}（空位）`;
   const styleParts=[color?`background:${color}`:'',extraStyle||''].filter(Boolean).join(';');
@@ -523,14 +524,6 @@ function seatColorFor(student,stats,mode){
   t=Math.max(0,Math.min(1,t));
   return `hsl(${Math.round(120*t)},62%,74%)`;   // 0°红 → 120°绿
 }
-function seatColorLegendHtml(){
-  const mode=state.seatColorMode||'none';
-  if(mode==='none')return '';
-  const stops=[0,0.25,0.5,0.75,1].map(t=>`hsl(${Math.round(120*t)},62%,74%) ${Math.round(t*100)}%`).join(',');
-  const label=mode==='pct'?'班内百分位（低 → 高）':'得分率 30% → 100%';
-  return `<span class="seat-legend"><span class="seat-legend-bar" style="background:linear-gradient(90deg,${stops})"></span><span class="hint">${label}</span></span>`;
-}
-
 // ---------- 导入 / 导出座位表 ----------
 function seatImportView(){return state.seatImportView==='normal'?'normal':'teacher';}
 function parseSeatTableText(text){
