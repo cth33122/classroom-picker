@@ -82,13 +82,15 @@ function renderSettings(){
 </div>\
 </div>\
 <div class="panel">\
-<h2>危险操作</h2>\
-<p class="hint danger-text">删除后将清空学生资料、考试成绩、点名历史、缺席标记和设置，且无法从本机恢复。请先导出备份。</p>\
+<h2>数据重置</h2>\
+<div class="reset-actions">\
+<button class="secondary" id="forceUpdateBtn">强制更新</button>\
 <button class="danger" id="clearAllSettingsBtn">删除所有数据</button>\
+</div>\
 </div>\
 <p class="hint app-version">当前版本：${APP_VERSION}</p>`;
     
   $$('[data-setting],[data-diff]').forEach(el=>el.addEventListener('change',()=>applySettingEdit(el)));
   $('#toggleAdvanced').onclick=()=>{state.settingsAdvanced=!state.settingsAdvanced;renderSettings();};
-  $('#resetSettings').onclick=async()=>{state.settings=mergeConfig();await DB.put({id:'main',...state.settings});renderSettings();refreshCandidatesAfterSettings();toast('已恢复默认参数');};$('#saveShortcuts').onclick=async()=>{state.settings.shortcutClasses=$('#shortcutClasses').value.split(/[,，\s]+/).map(v=>normalizeClassName(v)).filter((v,i,a)=>v&&a.indexOf(v)===i);await DB.put({id:'main',...state.settings});render();};$('#clearAllSettingsBtn').onclick=clearAll;
+  $('#resetSettings').onclick=async()=>{state.settings=mergeConfig();await DB.put({id:'main',...state.settings});renderSettings();refreshCandidatesAfterSettings();toast('已恢复默认参数');};$('#saveShortcuts').onclick=async()=>{state.settings.shortcutClasses=$('#shortcutClasses').value.split(/[,，\s]+/).map(v=>normalizeClassName(v)).filter((v,i,a)=>v&&a.indexOf(v)===i);await DB.put({id:'main',...state.settings});render();};$('#forceUpdateBtn').onclick=forceAppUpdate;$('#clearAllSettingsBtn').onclick=clearAll;
 }

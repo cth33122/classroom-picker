@@ -1,6 +1,6 @@
 // 入口：视图分发、数据加载、service worker 注册
 
-const APP_VERSION = 'v125';
+const APP_VERSION = 'v128';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -98,4 +98,29 @@ async function refreshAfterDataImport(){
   await reload();
   renderAllViews();
   if(hadCandidates&&state.currentClass&&state.students.some(s=>s.className===state.currentClass))recommend();
+}
+
+// 强制更新：把页面用到的所有资源绕过浏览器缓存重新下载一遍，再刷新页面。
+// 只覆盖缓存条目，不会删除本机数据（IndexedDB 里的学生、考试、点名记录等都不受影响）。
+async function forceAppUpdate(){
+  if(!confirm('将重新下载最新程序文件，然后刷新页面。\n不会清除学生、考试、点名记录等本机数据。\n\n继续吗？'))return;
+  const btn=$('#forceUpdateBtn');
+  const label=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='正在更新…';}
+  try{
+    const urls=[location.pathname+location.search];
+    $$('script[src]').forEach(el=>urls.push(el.getAttribute('src')));
+    $$('link[href]').forEach(el=>urls.push(el.getAttribute('href')));
+    const list=[...new Set(urls.filter(Boolean))];
+    await Promise.all(list.map(u=>fetch(u,{cache:'reload'}).catch(()=>null)));
+    if('serviceWorker' in navigator){
+      const regs=await navigator.serviceWorker.getRegistrations().catch(()=>[]);
+      await Promise.all(regs.map(r=>r.update().catch(()=>null)));
+    }
+    toast('已重新下载最新文件，正在刷新…');
+    setTimeout(()=>location.reload(),700);
+  }catch(err){
+    if(btn){btn.disabled=false;btn.textContent=label;}
+    toast(`更新失败：${err.message}`);
+  }
 }

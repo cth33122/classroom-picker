@@ -105,6 +105,10 @@ body.modal-open .view-track { touch-action:none; }
 .student-link { border:0; padding:0; background:transparent; color:var(--teal); font:inherit; font-weight:700; text-align:left; }
 .detail-header { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }.detail-header h2 { flex:1 1 auto; min-width:0; margin:0; overflow-wrap:anywhere; }.detail-header .secondary { flex:0 0 auto; white-space:nowrap; }.detail-actions { display:flex; gap:8px; margin:12px 0 0; }.detail-actions > * { flex:1; min-width:0; }
 .chart-wrap { position:relative; width:100%; height:320px; overflow-x:auto; overflow-y:hidden; border:1px solid var(--line); border-radius:7px; background:#fff; }.chart-wrap canvas { display:block; min-width:0; width:auto; height:300px; border:0; background:#fff; }
+.chart-wrap canvas { cursor:zoom-in; }
+.chart-preview-card { width:min(820px,100%); }
+.chart-preview-wrap { width:100%; overflow:hidden; border:1px solid var(--line); border-radius:7px; background:#fff; }
+.chart-preview-wrap canvas { display:block; max-width:100%; border:0; background:#fff; }
 .rank-cell { min-width:150px; }.rank-scale { display:flex; gap:3px; margin-top:5px; }.rank-chip { display:inline-block; min-width:25px; padding:2px 4px; border-radius:4px; text-align:center; font-size:11px; }
 .stats-switch { display:flex; gap:6px; }.stats-switch .active { color:#fff; background:var(--teal); }
 .sort-button.active { color:#fff; background:var(--teal); }
@@ -199,3 +203,6 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
 .history-del-header,.history-del-row { grid-template-columns:78fr 96fr 74fr 48px; }
 .history-del-btn { width:100%; min-height:0; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--danger); font-size:12px; font-weight:700; padding:4px 6px; }
 .history-del-btn:hover { border-color:var(--danger); background:#fde8e7; }
+/* 设置页“数据重置”：两个按钮同一行并排 */
+.reset-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.reset-actions > * { flex:1 1 0; min-width:118px; }

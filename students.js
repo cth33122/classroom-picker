@@ -63,7 +63,7 @@ ${examRows.length>5?`<div class="actions"><button class="secondary" id="toggleEx
 </canvas>\
 </div>\
 <div class="chart-actions">\
-<button class="secondary" id="viewScoreChart">查看整张图</button>\
+<button class="secondary" id="viewScoreChart">查看高清图</button>\
 <button class="secondary" id="downloadScoreChartInline">下载图片</button>\
 </div>\
 </div>\
