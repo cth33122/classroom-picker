@@ -41,10 +41,9 @@ function renderRollcall(){
   const seatedCount=state.seatLayout?state.seatLayout.seats.filter(s=>s.studentId).length:0;
   const seatPanel=seatedCount>0?`<div class="panel seat-panel">\
 <div class="seat-panel-head">\
-<h2>座位表</h2>\
+<h3>座位表</h3>\
 <div class="seat-panel-actions">\
-<span class="hint">上色模式：</span>\
-<select id="seatColorMode" class="seat-color-select" title="座位着色">\
+<select id="seatColorMode" class="seat-color-select" title="座位着色" aria-label="座位着色模式">\
 <option value="none">不上色</option>\
 <option value="abs">得分率（绝对）</option>\
 <option value="pct">得分率（百分位）</option>\
@@ -55,7 +54,7 @@ function renderRollcall(){
 ${seatChartHtml()}\
 </div>`:`<div class="panel seat-panel seat-panel-collapsed">\
 <div class="seat-panel-head">\
-<h2>座位表</h2>\
+<h3>座位表</h3>\
 <div class="seat-panel-actions">\
 <span class="hint">未安排座位，点“编辑座位”安排后自动启用</span>\
 <button class="secondary seat-edit-btn" id="editSeatBtn">编辑座位</button>\
@@ -67,7 +66,7 @@ ${seatPanel}\
 ${seatedCount>0?'':'<div class="rollcall-gap"></div>'}\
 <div class="panel">\
 <div class="candidate-panel-head">\
-<h2>本次候选</h2>\
+<h3>本次候选</h3>\
 <button class="note-link" id="rulesBtn">点名规则介绍</button>\
 </div>\
 <div class="candidate-list" style="--cand-cols:${candCols}">${visible.length?visible.map(c=>{const live=liveOf(c),avg=averageScoreRate(live),rank=rankMap.get(live.id);return `<button class="candidate ${state.selectedCandidate===live.id?'selected-candidate':''}" data-student="${esc(live.id)}">\
