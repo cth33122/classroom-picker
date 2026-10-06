@@ -54,6 +54,11 @@ function renderSettings(){
 <option value="allow" ${s.sameDayRepeat==='allow'?'selected':''}>允许（同一天可以再次被点到）</option>\
 </select>\
 </div>\
+</div>\
+<div class="actions">\
+<button class="secondary" id="toggleAdvanced">${state.settingsAdvanced?'收起更多参数':'更多参数'}</button>\
+</div>\
+<div class="grid three" id="advancedSettings"${state.settingsAdvanced?'':' style="display:none"'}>\
 <div class="field">\
 <label>成绩靠后学生范围</label>\
 <input data-setting="lowScorePercentile" type="number" min="0" max="1" step="0.05" value="${s.lowScorePercentile||0.6}">\
@@ -84,5 +89,6 @@ function renderSettings(){
 <p class="hint app-version">当前版本：${APP_VERSION}</p>`;
     
   $$('[data-setting],[data-diff]').forEach(el=>el.addEventListener('change',()=>applySettingEdit(el)));
+  $('#toggleAdvanced').onclick=()=>{state.settingsAdvanced=!state.settingsAdvanced;renderSettings();};
   $('#resetSettings').onclick=async()=>{state.settings=mergeConfig();await DB.put({id:'main',...state.settings});renderSettings();refreshCandidatesAfterSettings();toast('已恢复默认参数');};$('#saveShortcuts').onclick=async()=>{state.settings.shortcutClasses=$('#shortcutClasses').value.split(/[,，\s]+/).map(v=>normalizeClassName(v)).filter((v,i,a)=>v&&a.indexOf(v)===i);await DB.put({id:'main',...state.settings});render();};$('#clearAllSettingsBtn').onclick=clearAll;
 }

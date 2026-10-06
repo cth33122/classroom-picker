@@ -26,14 +26,16 @@
       <button class="tab active" data-view="rollcall">点名</button>
       <button class="tab" data-view="students">学生</button>
       <button class="tab" data-view="history">统计</button>
-      <button class="tab" data-view="data">数据</button>
+      <button class="tab" data-view="data">文件</button>
       <button class="tab" data-view="settings">设置</button>
     </nav>
-    <section id="view-rollcall" class="view active"></section>
-    <section id="view-students" class="view"></section>
-    <section id="view-history" class="view"></section>
-    <section id="view-data" class="view"></section>
-    <section id="view-settings" class="view"></section>
+    <div class="view-track" id="viewTrack">
+      <section id="view-rollcall" class="view active"></section>
+      <section id="view-students" class="view"></section>
+      <section id="view-history" class="view"></section>
+      <section id="view-data" class="view"></section>
+      <section id="view-settings" class="view"></section>
+    </div>
   </main>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="vendor/jszip.min.js"></script>
@@ -42,6 +44,7 @@
   <script src="importer.js"></script>
   <script src="exporter.js"></script>
   <script src="core.js"></script>
+  <script src="seats.js"></script>
   <script src="charts.js"></script>
   <script src="rollcall.js"></script>
   <script src="students.js"></script>

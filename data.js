@@ -2,11 +2,16 @@
 
 
 
-async function handleImport(e){const file=e.target.files[0];
+// 读取/保存期间置位：手机端连点时会排队触发多次，必须自己挡住并发
+let importBusy=false;
+
+async function handleImport(e){const file=e.target.files[0],input=e.target;
   if(!file)return;
   const box=$('#importResult');
+  if(importBusy){input.value='';toast('正在处理上一个文件，请稍候');return;}
+  importBusy=true;
   box.textContent='正在读取…';
-  try{const result=await importGradeBooks(file);if(!result.exams.length){box.innerHTML='<p class="danger-text">未识别到学生记录，请检查文件格式。</p>';return;}state.pendingImport={file,exams:result.exams};box.innerHTML=importPreviewHtml(result);$('#saveExamBtn').addEventListener('click',savePendingExams);}catch(err){box.innerHTML=`<p class="danger-text">读取失败：${esc(err.message)}</p>`;}}
+  try{const result=await importGradeBooks(file);if(!result.exams.length){box.innerHTML='<p class="danger-text">未识别到学生记录，请检查文件格式。</p>';return;}state.pendingImport={file,exams:result.exams};box.innerHTML=importPreviewHtml(result);$('#saveExamBtn').addEventListener('click',savePendingExams);}catch(err){box.innerHTML=`<p class="danger-text">读取失败：${esc(err.message)}</p>`;}finally{importBusy=false;input.value='';}}
 
 // 导入确认面板：每场考试一张卡片。多场考试时可改名称/日期/总分，并取消勾选不需要的工作表。
 function importPreviewHtml(result){
@@ -43,25 +48,51 @@ ${result.warnings.length?`<p class="hint danger-text">提示：${result.warnings
 </div>`;
 }
 
-async function handleRestore(e){const file=e.target.files[0];if(!file)return;try{const data=JSON.parse(await file.text());if(!data||!Array.isArray(data.students)||!Array.isArray(data.history))throw new Error('备份文件结构不完整');if(!confirm('恢复备份会覆盖当前本地数据，确定继续吗？'))return;for(const key of ['students','history','settings','absences','meta','exams','examResults'])await DB.replace(key,Array.isArray(data[key])?data[key]:[]);await refreshAfterDataImport();toast('备份已恢复');}catch(err){toast(`恢复失败：${err.message}`);}}
+async function handleRestore(e){const file=e.target.files[0],input=e.target;
+  if(!file)return;
+  if(importBusy){input.value='';toast('正在保存成绩，请稍候');return;}
+  try{const data=JSON.parse(await file.text());if(!data||!Array.isArray(data.students)||!Array.isArray(data.history))throw new Error('备份文件结构不完整');if(!confirm('恢复备份会覆盖当前本地数据，确定继续吗？'))return;importBusy=true;try{for(const key of ['students','history','settings','absences','meta','exams','examResults','seats'])await DB.replace(key,Array.isArray(data[key])?data[key]:[]);await refreshAfterDataImport();toast('备份已恢复');}finally{importBusy=false;}}catch(err){toast(`恢复失败：${err.message}`);}finally{input.value='';}}
 
-async function clearAll(){if(!confirm('确定清除全部学生、考试、历史和设置吗？此操作不可撤销。'))return;for(const key of ['students','history','settings','absences','meta','exams','examResults'])await DB.clear(key);state.currentClass='';state.candidates=[];await refreshAfterDataImport();toast('本地数据已清除');}
+async function clearAll(){if(importBusy){toast('正在保存，请稍候');return;}if(!confirm('确定清除全部学生、考试、历史和设置吗？此操作不可撤销。'))return;for(const key of ['students','history','settings','absences','meta','exams','examResults','seats'])await DB.clear(key);state.currentClass='';state.candidates=[];await refreshAfterDataImport();toast('本地数据已清除');}
 
-async function savePendingExams(){const pending=state.pendingImport;
-  if(!pending)return;
+async function savePendingExams(){
+  const pending=state.pendingImport;
+  if(!pending||importBusy)return;
+  const btn=$('#saveExamBtn');
   const entries=$$('#importResult .exam-import-card').map(card=>{const exam=pending.exams[Number(card.dataset.examIndex)];return {exam,include:pending.exams.length<2?true:Boolean(card.querySelector('.exam-include')?.checked),name:(card.querySelector('.exam-name')?.value||'').trim()||exam.source.exercise,date:card.querySelector('.exam-date')?.value||exam.source.date,totalScore:Number(card.querySelector('.exam-total')?.value||exam.totalScore)};}).filter(x=>x.include);
   if(!entries.length){toast('请至少勾选一场考试');return;}
   const invalid=entries.find(x=>!Number.isFinite(x.totalScore)||x.totalScore<=0);if(invalid){toast(`“${invalid.name}”的考试总分必须大于0`);return;}
-  const savedDates=new Set(state.exams.map(x=>String(x.date))),skipped=[];let saved=0,recordCount=0;
-  for(const entry of entries){
-    if(savedDates.has(String(entry.date))){skipped.push(`${entry.name}（${entry.date}）`);continue;}
-    const examId=`exam-${Date.now()}-${Math.random().toString(36).slice(2,7)}`,exam={id:examId,name:entry.name,date:entry.date,totalScore:entry.totalScore,weight:1,sourceFile:pending.file.name,importedAt:new Date().toISOString(),count:entry.exam.students.length};
-    await DB.put('exams',exam);
-    for(const incoming of entry.exam.students){const old=state.students.find(s=>s.id===incoming.id);await DB.put('examResults',{id:`${examId}:${incoming.id}`,examId,studentId:incoming.id,identityKey:incoming.identityKey||incoming.id,result:incoming});await DB.put('students',old?{...old,...incoming,focus:old.focus===true}:incoming);}
-    savedDates.add(String(entry.date));saved++;recordCount+=entry.exam.students.length;
-  }
-  await refreshAfterDataImport();
-  toast(saved?`已保存 ${saved} 场考试、${recordCount} 条记录${skipped.length?`；跳过日期重复：${skipped.join('、')}`:''}`:`未保存新考试，日期重复：${skipped.join('、')}`);
+  importBusy=true;
+  const label=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='正在保存…';}
+  try{
+    // 重复校验以数据库里的考试为准；日期在写库之前就登记，避免并发点击或失败重试时重复导入
+    const savedDates=new Set((await DB.all('exams')).map(x=>String(x.date)));
+    const studentIndex=new Map(state.students.map(s=>[s.id,s])),mergedStudents=new Map(),newResults=[],newExams=[],skipped=[];
+    let saved=0,recordCount=0;
+    for(const entry of entries){
+      const date=String(entry.date);
+      if(savedDates.has(date)){skipped.push(`${entry.name}（${entry.date}）`);continue;}
+      savedDates.add(date);
+      const examId=`exam-${Date.now()}-${Math.random().toString(36).slice(2,7)}`;
+      for(const incoming of entry.exam.students){
+        const old=studentIndex.get(incoming.id),merged=old?{...old,...incoming,focus:old.focus===true}:incoming;
+        studentIndex.set(incoming.id,merged);mergedStudents.set(incoming.id,merged);
+        newResults.push({id:`${examId}:${incoming.id}`,examId,studentId:incoming.id,identityKey:incoming.identityKey||incoming.id,result:incoming});
+      }
+      newExams.push({id:examId,name:entry.name,date:entry.date,totalScore:entry.totalScore,weight:1,sourceFile:pending.file.name,importedAt:new Date().toISOString(),count:entry.exam.students.length});
+      saved++;recordCount+=entry.exam.students.length;
+    }
+    // 成绩明细与学生先写、考试记录最后写：中途失败时不会留下“有考试却没有成绩”的记录
+    await DB.putMany('examResults',newResults);
+    await DB.putMany('students',[...mergedStudents.values()]);
+    await DB.putMany('exams',newExams);
+    await refreshAfterDataImport();
+    toast(saved?`已保存 ${saved} 场考试、${recordCount} 条记录${skipped.length?`；跳过日期重复：${skipped.join('、')}`:''}`:`未保存新考试，日期重复：${skipped.join('、')}`);
+  }catch(err){
+    if(btn){btn.disabled=false;btn.textContent=label;}
+    toast(`保存失败：${err.message}`);
+  }finally{importBusy=false;}
   }
 
 function openExamEditor(id){

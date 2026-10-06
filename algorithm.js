@@ -1,6 +1,6 @@
 // 点名算法配置：难度区间使用班级位次分位数，不使用成绩率。
 const ALGORITHM_DEFAULTS = {
-  configVersion: 3, candidateCount: 3,
+  configVersion: 4, candidateCount: 4,
   recentDecay: 0.58, recoveryPerCall: 0.12, focusBoost: 1.65, basisExamCount: 3, historyRule: 'twoMonths', sameDayRepeat: 'block', lowScorePercentile: 0.60, zeroRecentBoost: 1.5, shortcutClasses: [],
   difficulty: {
     1: { minPercentile: 0.60, maxPercentile: 1.00 },
@@ -19,7 +19,9 @@ function historyRuleWindow(rule) {
   return days ? `最近 ${days} 天内的点名记录` : '全部历史点名记录';
 }
 function mergeConfig(saved) {
-  const source = saved || {};
+  let source = saved || {};
+  // v3 → v4：默认候选人数由 3 改为 4。只跟随仍停留在旧默认值 3 的设置，用户手动改过的值不动。
+  if (Number(source.configVersion || 0) < 4 && Number(source.candidateCount) === 3) source = { ...source, candidateCount: 4 };
   const savedDifficulty = source.difficulty || {};
   const difficulty = {};
   [1, 2, 3].forEach(key => {
@@ -30,7 +32,7 @@ function mergeConfig(saved) {
     const safeMax=Number.isFinite(max)?Math.max(safeMin,Math.min(1,max)):fallback.maxPercentile;
     difficulty[key] = { minPercentile:safeMin, maxPercentile:safeMax };
   });
-  const next = { ...ALGORITHM_DEFAULTS, ...source, configVersion: 3, difficulty };
+  const next = { ...ALGORITHM_DEFAULTS, ...source, configVersion: 4, difficulty };
   delete next.historyWindow; // 早期版本的“最近点名统计窗口”，已无任何作用
   const numeric=(value,fallback)=>Number.isFinite(Number(value))?Number(value):fallback;
   next.candidateCount=Math.max(1,Math.min(12,numeric(next.candidateCount,ALGORITHM_DEFAULTS.candidateCount)));
