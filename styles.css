@@ -167,6 +167,10 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
 .field textarea { width:100%; min-height:120px; border:1px solid var(--line); border-radius:7px; padding:9px 10px; background:#fff; color:var(--ink); font:inherit; font-size:15px; resize:vertical; }
 .note-images-head { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px; margin:14px 0 8px; }
 .note-add { display:inline-flex; align-items:center; justify-content:center; min-height:38px; padding:8px 12px; font-size:14px; }
+/* 选择文件：用 label 包裹一个视觉隐藏的 input（国产 ROM 浏览器对裸 input 常无响应） */
+.file-pick { display:inline-flex; align-items:center; justify-content:center; cursor:pointer; text-align:center; }
+.file-pick input { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+.data-import-actions .file-pick { flex:1; min-width:220px; }
 .note-image-list { display:grid; grid-template-columns:repeat(auto-fill,minmax(92px,1fr)); gap:8px; }
 .note-image-item { position:relative; border:1px solid var(--line); border-radius:7px; overflow:hidden; background:var(--bg); }
 .note-image-item img { display:block; width:100%; height:92px; object-fit:cover; }

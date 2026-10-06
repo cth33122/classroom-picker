@@ -673,7 +673,7 @@ function openSeatImport(){
 <option value="normal" ${seatImportView()==='normal'?'selected':''}>正常视角（Excel 第一行 = 第1排）</option>\
 </select></div>\
 <div class="field"><label>选择文件（.xlsx / .csv / .txt）</label>\
-<input id="seatImportFile" type="file" accept=".xlsx,.csv,.txt"></div>\
+<label class="secondary file-pick">点此选择文件<input id="seatImportFile" type="file" accept=".xlsx,.csv,.txt,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/octet-stream"></label></div>\
 <div class="field"><label>或直接粘贴表格（每行一排，用 Tab/逗号分隔）</label>\
 <textarea id="seatImportText" rows="6" placeholder="张三&#9;李四&#9;王五&#10;赵六&#9;孙七&#9;"></textarea></div>\
 <p class="hint">支持矩阵式（按教室形状填写，讲台两侧写“讲台左：姓名 / 讲台右：姓名”）与清单式（表头含 列 / 排 / 姓名）。</p>\

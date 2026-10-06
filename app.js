@@ -1,6 +1,6 @@
 // 入口：视图分发、数据加载、service worker 注册
 
-const APP_VERSION = 'v121';
+const APP_VERSION = 'v122';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
