@@ -142,7 +142,7 @@ function renderData(){
 <h2>导入成绩文件</h2>\
 <p class="hint">支持“数智作业”“学生小题得分明细”等 xlsx。若一个工作簿含多个以“考试名称-日期”（如 周测8-20270124）命名的工作表，会分别导入为多场考试；学生身份以“班级+姓名”为准，学号/考号可选。</p>\
 <div class="data-import-actions">\
-<label class="secondary file-pick">选择成绩文件<input id="xlsxInput" type="file" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/octet-stream"></label>\
+<input id="xlsxInput" class="file-input" type="file" accept=".xlsx">\
 <button class="secondary" id="downloadTemplateBtn">下载成绩导入模板</button>\
 </div>\
 <div id="importResult">\
