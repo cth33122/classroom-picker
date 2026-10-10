@@ -6,15 +6,15 @@
 // and expose the template download from the data screen.
 
 // 难度饼图：图注直接画在画布里，外部不再放文字。
-// 宽屏时图注在圆环右侧，窄屏（手机）时排在圆环下方；画布尺寸随容器宽度自适应。
+// 排布尽量紧凑：宽屏图注在圆环右侧，窄屏排在圆环下方；画布尺寸随容器宽度自适应。
 function drawDifficultyPie(counts){
   const canvas=$('#difficultyChart');
   if(!canvas)return;
   const host=canvas.parentElement;
   const hostW=host&&host.clientWidth?host.clientWidth:280;
-  const cssW=Math.max(260,Math.min(560,Math.round(hostW)));
-  const sideLegend=cssW>=380;                       // 有横向空间就把图注放右边
-  const cssH=sideLegend?Math.max(220,Math.min(300,Math.round(cssW*.78))):320;
+  const cssW=Math.max(240,Math.min(520,Math.round(hostW)));
+  const sideLegend=cssW>=340;                       // 有横向空间就把图注放右边
+  const cssH=sideLegend?Math.max(150,Math.min(200,Math.round(cssW*0.42))):208;
   const dpr=Math.max(1,window.devicePixelRatio||1);
   canvas.width=Math.round(cssW*dpr);
   canvas.height=Math.round(cssH*dpr);
@@ -24,9 +24,11 @@ function drawDifficultyPie(counts){
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,cssW,cssH);
   const total=counts.reduce((sum,n)=>sum+n,0),colors=['#2f80ed','#f2c94c','#eb5757'],labels=['简单','适中','困难'];
-  const cx=sideLegend?cssW*0.28:cssW/2;
-  const cy=sideLegend?cssH/2:cssH*0.36;
-  const r=Math.min(sideLegend?cssH*0.34:cssH*0.26,cssW*(sideLegend?0.24:0.30));
+  // 圆环尽量占满可用高度，四周只留很小余量
+  const pad=8;
+  const r=Math.max(30,Math.min(sideLegend?cssH/2-pad:cssH*0.36,cssW*(sideLegend?0.20:0.28)));
+  const cx=sideLegend?Math.round(pad+r):Math.round(cssW/2);
+  const cy=sideLegend?Math.round(cssH/2):Math.round(pad+r);
   if(!total){
     ctx.fillStyle='#6b7c78';ctx.font='14px sans-serif';ctx.textAlign='center';
     ctx.fillText('暂无点名数据',cssW/2,cssH/2);
@@ -40,53 +42,39 @@ function drawDifficultyPie(counts){
     start+=angle;
   });
   ctx.fillStyle='#fff';
-  ctx.beginPath();ctx.arc(cx,cy,r*.52,0,Math.PI*2);ctx.fill();
-  ctx.fillStyle='#16302b';ctx.font='bold 16px sans-serif';ctx.textAlign='center';
+  ctx.beginPath();ctx.arc(cx,cy,r*.54,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#16302b';ctx.font='bold 15px sans-serif';ctx.textAlign='center';
   ctx.fillText(total+'次',cx,cy+5);
   // ---- 图注 ----
-  const dot=9,gapY=sideLegend?26:14;
-  const text=(n,i)=>labels[i]+'：'+n+'次';
+  const dot=8;
+  ctx.textAlign='left';
   if(sideLegend){
-    const lx=Math.round(cx+r)+22;
-    let ly=cy-((labels.length-1)*gapY)/2;
-    ctx.textAlign='left';
+    const gapY=20,lx=cx+r+14;
+    let ly=Math.round(cy-((labels.length-1)*gapY)/2);
     labels.forEach((_,i)=>{
       ctx.fillStyle=colors[i];
-      ctx.beginPath();ctx.arc(lx,ly-4,dot/2,0,Math.PI*2);ctx.fill();
+      ctx.beginPath();ctx.arc(lx+dot/2,ly-4,dot/2,0,Math.PI*2);ctx.fill();
       ctx.fillStyle='#16302b';ctx.font='13px sans-serif';
-      ctx.fillText(text(counts[i],i),lx+dot+6,ly);
+      ctx.fillText(labels[i]+'：'+counts[i]+'次',lx+dot+5,ly);
       ly+=gapY;
     });
   }else{
-    // 手机：图注排在圆环下方，一行放不下才换行，整体居中
-    const pillH=26,gapX=6,padX=8,textW=46,dotW=9;
-    const items=labels.map((_,i)=>({label:text(counts[i],i),color:colors[i]}));
-    const wOf=it=>Math.min(cssW-16,padX+dotW+6+textW+padX);
-    const lines=[[]];
-    let used=0;
-    items.forEach(it=>{
-      const w=wOf(it);
-      if(used&&used+gapX+w>cssW-8){lines.push([]);used=0;}
-      lines[lines.length-1].push({it:it,w:w});
-      used+=w+gapX;
-    });
-    const baseY=cssH-pillH/2-6-(lines.length-1)*(pillH+6);
-    ctx.textAlign='left';
-    lines.forEach((line,li)=>{
-      const totalW=line.reduce((s,x)=>s+x.w,0)+(line.length-1)*gapX;
-      let x=(cssW-totalW)/2;
-      const y=baseY+li*(pillH+6);
-      line.forEach(({it,w})=>{
-        ctx.fillStyle='#f5f7f6';
-        ctx.beginPath();
-        if(ctx.roundRect)ctx.roundRect(x,y-pillH/2,w,pillH,pillH/2);else ctx.rect(x,y-pillH/2,w,pillH);
-        ctx.fill();
-        ctx.fillStyle=it.color;
-        ctx.beginPath();ctx.arc(x+padX+dotW/2,y,dotW/2,0,Math.PI*2);ctx.fill();
-        ctx.fillStyle='#16302b';ctx.font='13px sans-serif';
-        ctx.fillText(it.label,x+padX+dotW+6,y+4.5);
-        x+=w+gapX;
-      });
+    // 手机：圆环下方一行图注，整体居中，尽量贴近圆环
+    const pillH=24,gapX=6,padX=7,textW=44;
+    const pillW=Math.min(Math.floor((cssW-16-gapX*2)/3),padX*2+dot+5+textW);
+    const totalW=pillW*3+gapX*2;
+    let x=Math.round((cssW-totalW)/2);
+    const y=cssH-pillH/2-4;
+    labels.forEach((_,i)=>{
+      ctx.fillStyle='#f5f7f6';
+      ctx.beginPath();
+      if(ctx.roundRect)ctx.roundRect(x,y-pillH/2,pillW,pillH,pillH/2);else ctx.rect(x,y-pillH/2,pillW,pillH);
+      ctx.fill();
+      ctx.fillStyle=colors[i];
+      ctx.beginPath();ctx.arc(x+padX+dot/2,y,dot/2,0,Math.PI*2);ctx.fill();
+      ctx.fillStyle='#16302b';ctx.font='12px sans-serif';
+      ctx.fillText(labels[i]+'：'+counts[i]+'次',x+padX+dot+5,y+4);
+      x+=pillW+gapX;
     });
   }
 }

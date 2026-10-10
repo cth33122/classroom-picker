@@ -146,8 +146,10 @@ body.modal-open .view-track { touch-action:none; }
 .exam-date { display:block; margin-top:4px; }
 .call-info { min-width:0; white-space:nowrap; color:var(--teal); font-size:13px; }
 .call-info small { display:block; color:var(--muted); font-size:11px; }
-/* 难度饼图：图注已画进画布，容器只负责给画布让位 */
-.difficulty-chart { display:block; }
+/* 难度饼图：图注已画进画布，容器紧贴画布，尽量不留空白 */
+.difficulty-stats { padding-bottom:6px; }
+.difficulty-stats .history-section-title { margin-bottom:6px; }
+.difficulty-chart { display:block; line-height:0; }
 .difficulty-chart canvas { display:block; max-width:100%; height:auto; }
 /* 图注已画进画布，这三条规则不再需要 */
 .exam-name-list { display:grid; gap:8px; }.exam-name-item { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; padding:13px 14px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); text-align:left; }.exam-name-item:hover { border-color:var(--teal); background:var(--mint); }.exam-name-item small { color:var(--muted); white-space:nowrap; }
@@ -274,31 +276,45 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
 .question-record-btn { min-height:36px; padding:6px 12px; font-size:13px; }
 .question-latest { font-size:13px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* 记录问题 / 问题记录弹窗 */
-.question-record-card { width:min(520px,100%); }
 .eval-picker { display:flex; align-items:center; gap:8px; }
 .eval-btn { min-height:34px; padding:4px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; font-size:16px; cursor:pointer; }
 .eval-btn:hover { border-color:var(--teal); }
 .eval-btn.is-on { border-color:var(--teal); box-shadow:0 0 0 2px rgba(15,118,110,.22); }
 .eval-btn.is-good { background:#e8f7ef; }
 .eval-btn.is-bad { background:#fdeceb; }
-/* 问题记录弹窗：窗口更高，文本框最小高度加大，写起来更从容 */
-.student-questions-card { width:min(620px,100%); height:min(94vh,1100px); display:flex; flex-direction:column; overflow:hidden; }
+/* 问题记录弹窗：合并为一个全屏窗口（所有入口都走它） */
+.modal-backdrop.questions-fullscreen { padding:0; align-items:stretch; }
+.questions-card { width:100%; height:100%; max-height:none; border-radius:0; padding:12px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); display:flex; flex-direction:column; overflow:hidden; }
+/* 月份筛选：横向可滑动，按年月分组所以跨年也不会混 */
+.question-filter { display:flex; align-items:center; gap:8px; margin:0 0 8px; }
+.filter-label { flex:0 0 auto; color:var(--muted); font-size:12px; font-weight:700; }
+.month-strip { display:flex; gap:6px; overflow-x:auto; white-space:nowrap; -webkit-overflow-scrolling:touch; scrollbar-width:none; flex:1 1 auto; padding:2px 0; }
+.month-strip::-webkit-scrollbar { display:none; }
+.month-pill { flex:0 0 auto; min-height:32px; padding:5px 12px; border:1px solid var(--line); border-radius:999px; background:#fff; color:var(--muted); font-size:13px; font-weight:700; cursor:pointer; }
+.month-pill.is-on { border-color:var(--teal); background:var(--mint); color:var(--teal); }
+.question-search { flex:0 0 auto; width:126px; min-height:32px; border:1px solid var(--line); border-radius:999px; padding:5px 10px; font:inherit; font-size:13px; }
 .question-list { flex:1 1 auto; min-height:0; overflow-y:auto; display:grid; gap:10px; align-content:start; padding-right:2px; }
-.question-row { display:flex; flex-direction:column; border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#fff; }
+/* 每条记录：左侧竖排 emoji，右侧“时间/难度”一行 + 按内容高度分配的问题框 */
+.question-row { display:grid; grid-template-columns:auto 1fr; grid-template-rows:auto auto; gap:4px 8px; border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:#fff; }
 .question-row.is-focus { border-color:var(--teal); box-shadow:0 0 0 2px rgba(15,118,110,.25); }
-/* 还没复盘的记录也能编辑，用虚线和灰字提示“这里可以补录” */
-.question-row.is-todo { border-style:dashed; background:var(--bg); }
-.question-done { color:var(--teal); background:var(--mint); }
-.question-todo { color:var(--muted); background:#eef2f1; }
-.question-row-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+.question-row > .eval-picker { grid-row:1 / span 2; display:flex; flex-direction:column; gap:4px; }
+.question-row-head { grid-column:2; grid-row:1; display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
 .question-time { color:var(--ink); font-size:13px; font-weight:700; }
 .question-diff { flex:0 0 auto; }
 .question-del { margin-left:auto; min-height:0; padding:3px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--danger); font-size:12px; font-weight:700; cursor:pointer; }
 .question-del:hover { border-color:var(--danger); background:#fde8e7; }
-.question-text { width:100%; min-height:104px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; background:#fff; color:var(--ink); font:inherit; font-size:14px; line-height:1.5; resize:vertical; }
-/* 单条记录的内联编辑弹窗：文本框也加高 */
-.question-record-card textarea { min-height:150px; }
-.question-review-at { margin:6px 0 0; font-size:12px; }
+/* 高度由 JS 按实际内容行数设置（空 → 1 行，最多 12 行）；行高固定 21px 便于换算 */
+.question-text { grid-column:2; width:100%; min-height:39px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; background:#fff; color:var(--ink); font:inherit; font-size:14px; line-height:21px; resize:none; box-sizing:border-box; }
+/* 备份与恢复面板：只放“立即备份 / 取消”两个按钮 */
+.backup-actions > * { flex:1 1 0; min-width:130px; }
+/* 周六备份提醒条（点名页顶部） */
+.reminder-banner { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; border-color:#f2d08a; background:#fffaf0; }
+.reminder-text { display:flex; flex-direction:column; gap:3px; min-width:0; flex:1 1 220px; font-size:13px; line-height:1.5; }
+.reminder-text strong { color:var(--warn); font-size:14px; }
+.reminder-text .hint { margin:0; font-size:12px; }
+.reminder-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.reminder-actions .primary,.reminder-actions .secondary { min-height:36px; padding:7px 12px; font-size:13px; }
+.reminder-dismiss { min-height:36px; padding:6px 10px; border:0; background:transparent; color:var(--muted); font-size:12px; text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
 /* 设置页“数据重置”：两个按钮同一行并排 */
 .reset-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .reset-actions > * { flex:1 1 0; min-width:118px; }

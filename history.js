@@ -86,11 +86,11 @@ function renderHistory(){
       renderHistory();
       refreshRollcallAfterReview();
     });
-    // 每条记录下方的问题栏：点开这一条的内联编辑框（没有内容时用来补录）
+    // 每条记录下方的问题栏：打开全屏问题记录弹窗，并定位到这一条
     $$('[data-history-question]').forEach(el=>el.onclick=()=>{
       const rec=state.history.find(x=>String(x.id)===String(el.dataset.historyQuestion));
       if(!rec){toast('这条记录已不存在');renderHistory();return;}
-      openRecordQuestionEditor(rec.id,()=>renderHistory());
+      openStudentQuestions(rec.studentId,{focusId:rec.id,onClose:()=>renderHistory()});
     });
     // “详情”按钮：打开该生的问题记录弹窗（停在最新一条）
     $$('[data-student-questions]').forEach(b=>b.onclick=()=>openStudentQuestions(b.dataset.studentQuestions,{onClose:()=>renderHistory()}));

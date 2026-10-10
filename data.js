@@ -163,18 +163,13 @@ function renderData(){
 </button>`).join(''):'<div class="empty">尚未导入考试</div>'}</div>\
 </details>\
 </div>\
-<div class="panel">\
+<div class="panel" id="backupPanel">\
 <h2>备份与恢复</h2>\
-<div class="actions">\
-<button class="secondary" id="historyExportBtn">导出点名历史</button>\
-<button class="secondary" id="exportGradesBtn">导出成绩表格</button>\
+<div class="actions backup-actions">\
+<button class="primary" id="backupNowBtn">立即备份</button>\
+<button class="secondary" id="backupCancelBtn">取消</button>\
 </div>\
-<p class="hint">“导出成绩表格”生成 xlsx，每场考试一个工作表（工作表名为“考试名称-日期”），内容为姓名、班级、成绩、班次、段次、考号，可直接再导入本程序。</p>\
-<div class="backup-picker">\
-<button class="secondary" id="backupBtn">导出完整备份</button>\
-<label class="secondary">导入备份文件<input id="backupInput" type="file" accept=".json" hidden>\
-</label>\
-</div>\
+<p class="hint">点“立即备份”会立刻下载一个备份文件，包含学生、成绩、点名记录与座位表；点“取消”则不做任何操作。</p>\
 </div>\
 <div class="panel">\
 <h2>清除数据</h2>\
@@ -182,5 +177,5 @@ function renderData(){
 <button class="danger" id="clearBtn">清除全部本地数据</button>\
 </div>`;
     
-  $('#xlsxInput')?.addEventListener('change',handleImport);$('#downloadTemplateBtn')?.addEventListener('click',downloadGradeTemplate);$('#backupBtn')?.addEventListener('click',exportBackup);$('#historyExportBtn')?.addEventListener('click',exportHistory);$('#exportGradesBtn')?.addEventListener('click',exportGrades);$('#backupInput')?.addEventListener('change',handleRestore);$('#clearBtn')?.addEventListener('click',clearAll);$$('[data-open-exam]').forEach(b=>b.onclick=()=>openExamEditor(b.dataset.openExam));
+  $('#xlsxInput')?.addEventListener('change',handleImport);$('#downloadTemplateBtn')?.addEventListener('click',downloadGradeTemplate);$('#backupNowBtn')?.addEventListener('click',exportBackup);$('#backupCancelBtn')?.addEventListener('click',()=>{const p=$('#backupPanel');if(p)p.hidden=true;toast('已取消备份，没有下载任何文件');});$('#clearBtn')?.addEventListener('click',clearAll);$$('[data-open-exam]').forEach(b=>b.onclick=()=>openExamEditor(b.dataset.openExam));
 }

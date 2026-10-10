@@ -1,6 +1,7 @@
 // 点名复盘：问题记录（评价 emoji + 问题内容）
 // 约定：复盘数据与那次点名共用一条 history 记录（questionId = String(history.id)），
 // 所以在任何地方按 id 就能读写，不需要额外的关联表或级联删除。
+// 全部入口（点名统计的“详情”、点名记录/学生详情里的问题栏、点名结果卡的 ✎）都走同一个全屏弹窗。
 
 const EVAL_EMOJI={good:'😊',bad:'😢'};
 function evalLabel(value){return EVAL_EMOJI[value]||'';}
@@ -36,16 +37,36 @@ function questionSummary(text,limit=40){
 function historyRecordById(id){
   return state.history.find(x=>String(x.id)===String(id))||null;
 }
-// 弹窗列出的记录：全部点名记录（新→旧），已复盘的排前面，方便继续补录
+// 弹窗列出的记录：全部点名记录（新→旧）
 function questionRowsForModal(studentId){
-  const all=studentReviewState(studentId).all.filter(x=>historyRecordById(x.id));
-  return all.slice().sort((a,b)=>{
-    const ra=hasReviewContent(a)?1:0,rb=hasReviewContent(b)?1:0;
-    if(rb!==ra)return rb-ra;
-    const ta=Date.parse(a.at)||0,tb=Date.parse(b.at)||0;
-    if(tb!==ta)return tb-ta;
-    return (Number(b.id)||0)-(Number(a.id)||0);
-  });
+  return studentReviewState(studentId).all.filter(x=>historyRecordById(x.id));
+}
+// 按点名时间归出的月份（新→旧），例如 ['2026-03','2026-02','2025-12']
+function reviewMonthKey(at){
+  const d=new Date(at);
+  if(Number.isNaN(d.getTime()))return '';
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+}
+function reviewMonthOptions(rows){
+  const keys=[];
+  rows.forEach(r=>{const k=reviewMonthKey(r.at);if(k&&!keys.includes(k))keys.push(k);});
+  return keys.sort().reverse();
+}
+function reviewMonthLabel(key){
+  const m=String(key||'').match(/^(\d{4})-(\d{2})$/);
+  return m?`${Number(m[2])}月`:'';
+}
+// 文本框高度按实际内容分配：空 → 1 行；有内容 → 行数（上限 12 行后内部滚动）
+const QUESTION_LINE_PX=21,QUESTION_MAX_LINES=12;
+function questionLineCount(text){
+  const t=String(text||'');
+  if(!t.trim())return 1;
+  return Math.max(1,Math.min(QUESTION_MAX_LINES,t.split('\n').length));
+}
+function fitQuestionBox(box){
+  if(!box)return;
+  const n=questionLineCount(box.value);
+  box.style.height=(n*QUESTION_LINE_PX+18)+'px';
 }
 
 // 写入一条复盘改动：只改字段，不新增 history 行
@@ -69,67 +90,10 @@ async function toggleHistoryEval(record,value,options){
   if(!(options&&options.silent))toast(next?(next==='good'?'已记为 😊 满意':'已记为 😢 不满意'):'已取消这条的评价');
   return saved;
 }
-function openRecordQuestionEditor(recordId,from){
-  const rec=historyRecordById(recordId);
-  if(!rec){toast('这条点名记录已不存在');return;}
-  const stu=state.students.find(s=>s.id===rec.studentId);
-  const shown=stu?(stu.displayName||stu.name):rec.studentId;
-  const when=new Date(rec.at).toLocaleString();
-  $('#questionRecordModal')?.remove();
-  const modal=document.createElement('div');
-  modal.id='questionRecordModal';modal.className='modal-backdrop';
-  modal.innerHTML='<div class="modal-card question-record-card" role="dialog" aria-modal="true">'
-    +'<div class="modal-header"><h2>记录问题 · '+esc(shown)+'</h2><button class="icon-button modal-close" aria-label="关闭">×</button></div>'
-    +'<p class="hint">'+esc(when)+' · '+esc(['','简单','适中','困难'][rec.difficulty]||'—')+'</p>'
-    +'<div class="field">'
-    +'<label>本次评价</label>'
-    +'<div class="eval-picker">'
-    +'<button type="button" class="eval-btn'+(rec.eval==='good'?' is-on is-good':'')+'" data-eval="good">😊 满意</button>'
-    +'<button type="button" class="eval-btn'+(rec.eval==='bad'?' is-on is-bad':'')+'" data-eval="bad">😢 不满意</button>'
-    +'</div>'
-    +'<p class="hint">再点一次同一档即可取消评价</p>'
-    +'</div>'
-    +'<div class="field">'
-    +'<label for="questionInput">问题内容</label>'
-    +'<textarea id="questionInput" rows="4" placeholder="记录这次问的问题，例如：说说第 3 题为什么这样变形…"></textarea>'
-    +'</div>'
-    +'<div class="actions"><button class="primary" id="questionSave">保存并关闭</button></div>'
-    +'</div>';
-  document.body.appendChild(modal);
-  const input=$('#questionInput');
-  input.value=String(rec.question||'');
-  let changed=false;
-  const paint=()=>{
-    $$('#questionRecordModal .eval-btn').forEach(b=>{
-      const on=String(rec.eval||'')===b.dataset.eval;
-      b.classList.toggle('is-on',on);
-      b.classList.toggle('is-good',on&&b.dataset.eval==='good');
-      b.classList.toggle('is-bad',on&&b.dataset.eval==='bad');
-    });
-  };
-  const close=async(save)=>{
-    if(save){
-      await saveHistoryReview(rec,{question:input.value});
-      changed=true;
-    }
-    modal.remove();
-    if(typeof from==='function')from();
-    // 关掉这一条之后统一刷新：统计页的问题栏/评价列、学生详情页都要同步
-    if(changed)refreshRollcallAfterReview();
-  };
-  $$('#questionRecordModal .eval-btn').forEach(b=>b.onclick=async()=>{
-    await toggleHistoryEval(rec,b.dataset.eval,{silent:true});
-    paint();
-    changed=true;
-  });
-  $('#questionSave').onclick=()=>close(true);
-  modal.querySelector('.modal-close').onclick=()=>close(true);
-  modal.onclick=ev=>{if(ev.target===modal)close(true);};
-  paint();
-  input.focus();
-}
 
-// 该生的全部问题记录（新→旧），可查看、编辑、取消评价、删除
+// 唯一的“问题记录”全屏弹窗。
+// opts.focusId：打开后滚动并聚焦到这一条（从点名记录/问题栏点进来时用）
+// opts.onClose ：关闭后的回调（各入口用它刷新自己那一页）
 function openStudentQuestions(studentId,opts){
   const options=opts||{};
   const stu=state.students.find(s=>s.id===studentId);
@@ -137,88 +101,134 @@ function openStudentQuestions(studentId,opts){
   const shown=stu.displayName||stu.name;
   $('#studentQuestionsModal')?.remove();
   const modal=document.createElement('div');
-  modal.id='studentQuestionsModal';modal.className='modal-backdrop';
+  modal.id='studentQuestionsModal';modal.className='modal-backdrop questions-fullscreen';
   document.body.appendChild(modal);
   // 待保存的问题文本：重绘或关闭前必须先冲刷，否则防抖期间的内容会随 DOM 重建一起丢掉
   const pending=new Map();
   const flushPending=async()=>{
-    for(const [ta,st] of [...pending.entries()]){
+    for(const [box,st] of [...pending.entries()]){
       if(st.timer){clearTimeout(st.timer);st.timer=null;}
-      pending.delete(ta);
-      const rec=historyRecordById(ta.dataset.qtext);
+      pending.delete(box);
+      const rec=historyRecordById(box.dataset.qtext);
       if(!rec)continue;
-      const typed=String(ta.value??'');
+      const typed=String(box.value??'');
       if(String(rec.question||'')!==typed.trim())await saveHistoryReview(rec,{question:typed});
     }
   };
-  const render=()=>{
-    const rows=questionRowsForModal(studentId);
-    const reviewedCount=rows.filter(hasReviewContent).length;
-    const body=rows.length?rows.map(rec=>{
-      const at=new Date(rec.at).toLocaleString();
-      const reviewAt=rec.questionAt?new Date(rec.questionAt).toLocaleString():'';
-      const question=String(rec.question||'').trim();
-      const done=hasReviewContent(rec);
-      return '<div class="question-row'+(done?'':' is-todo')+'" data-qid="'+esc(String(rec.id))+'">'
-        +'<div class="question-row-head">'
-        +'<span class="question-time">'+esc(at)+'</span>'
-        +'<span class="badge question-diff">'+esc(['','简单','适中','困难'][rec.difficulty]||'—')+'</span>'
-        +(done?'<span class="badge question-done">已复盘</span>':'<span class="badge question-todo">未复盘</span>')
-        +'<span class="eval-picker">'
-        +'<button type="button" class="eval-btn'+(rec.eval==='good'?' is-on is-good':'')+'" data-qeval="good" data-qid="'+esc(String(rec.id))+'" title="标记满意（再点取消）">😊</button>'
-        +'<button type="button" class="eval-btn'+(rec.eval==='bad'?' is-on is-bad':'')+'" data-qeval="bad" data-qid="'+esc(String(rec.id))+'" title="标记不满意（再点取消）">😢</button>'
-        +'</span>'
-        +'<button type="button" class="question-del" data-qdel="'+esc(String(rec.id))+'" title="删除这条点名记录">删除</button>'
-        +'</div>'
-        +'<textarea class="question-text" rows="2" data-qtext="'+esc(String(rec.id))+'" placeholder="点击这里记录这次问的问题…">'+esc(question)+'</textarea>'
-        +(reviewAt?'<p class="hint question-review-at">复盘于 '+esc(reviewAt)+'</p>':'')
-        +'</div>';
-    }).join(''):'<div class="empty">这位同学还没有点名记录<br><span class="hint">先在点名页点一次名，再回来记录评价与问题</span></div>';
-    modal.innerHTML='<div class="modal-card student-questions-card" role="dialog" aria-modal="true">'
-      +'<div class="modal-header">'
-      +'<h2>问题记录 · '+esc(shown)+'</h2>'
-      +'<button class="icon-button modal-close" aria-label="关闭">×</button>'
+  const rows=questionRowsForModal(studentId);
+  const monthKeys=reviewMonthOptions(rows);
+  const filter={month:'',text:''};
+  let focusPending=Boolean(options.focusId);
+
+  const rowHtml=rec=>{
+    const at=new Date(rec.at).toLocaleString();
+    const question=String(rec.question||'').trim();
+    return '<div class="question-row" data-qid="'+esc(String(rec.id))+'" data-month="'+esc(reviewMonthKey(rec.at))+'" data-search="'+esc(question)+'">'
+      +'<div class="question-row-head">'
+      +'<span class="eval-picker">'
+      +'<button type="button" class="eval-btn'+(rec.eval==='good'?' is-on is-good':'')+'" data-qeval="good" data-qid="'+esc(String(rec.id))+'" title="😊 满意（再点取消）">😊</button>'
+      +'<button type="button" class="eval-btn'+(rec.eval==='bad'?' is-on is-bad':'')+'" data-qeval="bad" data-qid="'+esc(String(rec.id))+'" title="😢 不满意（再点取消）">😢</button>'
+      +'</span>'
+      +'<span class="question-time">'+esc(at)+'</span>'
+      +'<span class="badge question-diff">'+esc(['','简单','适中','困难'][rec.difficulty]||'—')+'</span>'
+      +'<button type="button" class="question-del" data-qdel="'+esc(String(rec.id))+'" title="删除这条点名记录">删除</button>'
       +'</div>'
-      +'<p class="hint">共 '+rows.length+' 次点名，其中 '+reviewedCount+' 次已复盘。已复盘的排在前面；点 emoji 记评价（再点取消），问题内容自动保存。</p>'
-      +'<div class="question-list">'+body+'</div>'
+      +'<textarea class="question-text" rows="1" data-qtext="'+esc(String(rec.id))+'" placeholder="没有记录，点这里补写…">'+esc(question)+'</textarea>'
       +'</div>';
-    bind(rows);
   };
-  const bind=(rows)=>{
+  const filterHtml=monthKeys.length?'<div class="question-filter">\
+<span class="filter-label">月份</span>\
+<div class="month-strip">\
+<button type="button" class="month-pill is-on" data-month-pick="">全部</button>\
+'+monthKeys.map(k=>'<button type="button" class="month-pill" data-month-pick="'+esc(k)+'">'+esc(reviewMonthLabel(k))+'</button>').join('')+'\
+</div>\
+<input type="search" id="questionSearch" class="question-search" placeholder="搜索问题内容">\
+</div>':'';
+  const body=rows.length?rows.map(rowHtml).join('')
+    :'<div class="empty">这位同学还没有点名记录<br><span class="hint">先在点名页点一次名，再回来记录评价与问题</span></div>';
+
+  modal.innerHTML='<div class="modal-card questions-card" role="dialog" aria-modal="true">'
+    +'<div class="modal-header">'
+    +'<h2>问题记录 · '+esc(shown)+'</h2>'
+    +'<button class="icon-button modal-close" aria-label="关闭">×</button>'
+    +'</div>'
+    +filterHtml
+    +'<p class="hint" id="questionCount">共 '+rows.length+' 次点名</p>'
+    +'<div class="question-list">'+body+'</div>'
+    +'</div>';
+
+  const rowEls=()=>$$('#studentQuestionsModal .question-row');
+  const updateFilter=()=>{
+    const all=rowEls();
+    all.forEach(el=>{
+      const okMonth=!filter.month||el.dataset.month===filter.month;
+      const okText=!filter.text||String(el.dataset.search||'').indexOf(filter.text)>=0;
+      el.hidden=!(okMonth&&okText);
+    });
+    const n=all.filter(el=>!el.hidden).length;
+    const count=$('#questionCount');
+    if(count)count.textContent=(filter.month||filter.text)
+      ? '筛选后 '+n+' / 共 '+all.length+' 次点名'
+      : '共 '+all.length+' 次点名';
+  };
+  const bind=()=>{
     modal.querySelector('.modal-close').onclick=close;
+    // 月份筛选：切换高亮并过滤
+    $$('#studentQuestionsModal [data-month-pick]').forEach(b=>b.onclick=()=>{
+      filter.month=b.dataset.monthPick||'';
+      $$('#studentQuestionsModal [data-month-pick]').forEach(x=>x.classList.toggle('is-on',x.dataset.monthPick===filter.month));
+      updateFilter();
+    });
+    let searchTimer=null;
+    const search=$('#questionSearch');
+    if(search)search.addEventListener('input',()=>{
+      if(searchTimer)clearTimeout(searchTimer);
+      searchTimer=setTimeout(()=>{searchTimer=null;filter.text=String(search.value||'').trim();updateFilter();},180);
+    });
     // 评价：点了立刻写库，再点同档取消
     $$('#studentQuestionsModal [data-qeval]').forEach(b=>b.onclick=async()=>{
       const rec=historyRecordById(b.dataset.qid);
-      if(!rec){toast('这条记录已不存在');render();return;}
-      await flushPending();          // 先把正在输入的问题落库，避免重绘丢字
-      await toggleHistoryEval(rec,b.dataset.qeval);
-      render();
+      if(!rec){toast('这条记录已不存在');return;}
+      await flushPending();          // 先把正在输入的问题落库，避免丢字
+      const saved=await toggleHistoryEval(rec,b.dataset.qeval);
+      const on=saved&&String(saved.eval||'')===b.dataset.qeval;
+      const wrap=b.closest('.eval-picker');
+      if(wrap)$$('.eval-btn',wrap).forEach(x=>{
+        const hit=on&&x.dataset.qeval===b.dataset.qeval;
+        x.classList.toggle('is-on',hit);
+        x.classList.toggle('is-good',hit&&x.dataset.qeval==='good');
+        x.classList.toggle('is-bad',hit&&x.dataset.qeval==='bad');
+      });
       refreshRollcallAfterReview();
     });
-    // 问题内容：输入防抖自动保存（pending 表在重绘/关闭前会被冲刷）
-    $$('#studentQuestionsModal [data-qtext]').forEach(ta=>{
-      ta.addEventListener('input',()=>{
-        const st=pending.get(ta)||{};
+    // 问题内容：输入防抖自动保存 + 高度按内容分配
+    $$('#studentQuestionsModal [data-qtext]').forEach(box=>{
+      fitQuestionBox(box);
+      box.addEventListener('input',()=>{
+        fitQuestionBox(box);
+        const st=pending.get(box)||{};
         if(st.timer)clearTimeout(st.timer);
         st.timer=setTimeout(async()=>{
           st.timer=null;
-          pending.delete(ta);
-          const rec=historyRecordById(ta.dataset.qtext);
+          pending.delete(box);
+          const rec=historyRecordById(box.dataset.qtext);
           if(!rec)return;
-          await saveHistoryReview(rec,{question:ta.value});
+          await saveHistoryReview(rec,{question:box.value});
+          const row=box.closest('.question-row');
+          if(row)row.dataset.search=String(box.value||'').trim();
         },600);
-        pending.set(ta,st);
+        pending.set(box,st);
       });
-      ta.addEventListener('blur',async()=>{
-        const st=pending.get(ta);
+      box.addEventListener('blur',async()=>{
+        const st=pending.get(box);
         if(st&&st.timer){clearTimeout(st.timer);st.timer=null;}
-        pending.delete(ta);
-        const rec=historyRecordById(ta.dataset.qtext);
+        pending.delete(box);
+        const rec=historyRecordById(box.dataset.qtext);
         if(!rec)return;
-        if(String(rec.question||'')!==String(ta.value||'').trim())await saveHistoryReview(rec,{question:ta.value});
+        if(String(rec.question||'')!==String(box.value||'').trim())await saveHistoryReview(rec,{question:box.value});
       });
     });
-    // 删除这条点名记录（连同它的复盘数据）
+    // 删除这条点名记录（连同它的评价与问题）
     $$('#studentQuestionsModal [data-qdel]').forEach(b=>b.onclick=async()=>{
       const rec=historyRecordById(b.dataset.qdel);
       if(!rec)return;
@@ -226,19 +236,11 @@ function openStudentQuestions(studentId,opts){
       await DB.remove('history',rec.id);
       state.history=state.history.filter(x=>String(x.id)!==String(rec.id));
       toast('已删除该条点名记录');
-      render();
+      const row=b.closest('.question-row');
+      if(row)row.remove();
+      updateFilter();
       refreshRollcallAfterReview();
-      if(state.view==='history')renderHistory();
-      if(state.studentDetail)renderStudentDetail(state.studentDetail);
     });
-    if(options.focusId){
-      const el=modal.querySelector('[data-qid="'+String(options.focusId).replace(/"/g,'')+'"]');
-      if(el){
-        el.classList.add('is-focus');
-        requestAnimationFrame(()=>el.scrollIntoView({block:'center'}));
-        setTimeout(()=>el.classList.remove('is-focus'),2400);
-      }
-    }
   };
   const close=async()=>{
     await flushPending();          // 关窗前把还没落库的问题内容写完
@@ -246,7 +248,28 @@ function openStudentQuestions(studentId,opts){
     if(typeof options.onClose==='function')options.onClose();
   };
   modal.onclick=ev=>{if(ev.target===modal)close();};
-  render();
+  bind();
+  updateFilter();
+  // 从点名记录/问题栏点进来：滚动到那一条并把光标放进它的文本框
+  const focusTarget=()=>{
+    if(!focusPending||!options.focusId)return;
+    focusPending=false;
+    const row=modal.querySelector('.question-row[data-qid="'+String(options.focusId).replace(/"/g,'')+'"]');
+    if(!row)return;
+    row.classList.add('is-focus');
+    setTimeout(()=>row.classList.remove('is-focus'),2400);
+    const box=row.querySelector('.question-text');
+    requestAnimationFrame(()=>{
+      row.scrollIntoView({block:'center'});
+      if(box){
+        try{box.focus({preventScroll:true});}catch(err){try{box.focus();}catch(e2){}}
+        const len=String(box.value||'').length;
+        try{box.setSelectionRange(len,len);}catch(err){}
+      }
+    });
+  };
+  focusTarget();
+  setTimeout(focusTarget,60);
 }
 
 // 复盘改动后的统一刷新。
