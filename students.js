@@ -81,7 +81,7 @@ ${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc
 <span class="history-eval-cell">${evalText(x.eval)}</span>\
 <span><button type="button" class="student-link question-detail-link" data-student-questions="${esc(id)}" title="查看并编辑该生的问题记录">详情</button></span>\
 </div>\
-<div class="stat-row history-q-row${q?'':' is-empty'}" data-history-question="${qid}" title="${q?'点击编辑这次的问题记录':'点击记录这次的问题'}">${q?esc(questionSummary(q,60)):'＋ 记录本次问题'}</div>`;}).join(''):'<div class="empty">暂无点名记录</div>'}\
+<div class="history-q-row${q?'':' is-empty'}" data-history-question="${qid}" title="${q?'点击编辑这次的问题记录':'点击记录这次的问题'}">${q?esc(questionSummary(q,60)):'＋ 记录本次问题'}</div>`;}).join(''):'<div class="empty">暂无点名记录</div>'}\
 </div>`;
     
   // 返回：回到进入详情页之前所在的页面，且不重绘该页面（保留其原有状态与滚动位置）

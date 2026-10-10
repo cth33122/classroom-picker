@@ -51,7 +51,7 @@ function renderHistory(){
 <span class="history-eval-cell"><button type="button" class="history-eval-btn${x.eval?' is-'+x.eval:''}" data-history-eval="${qid}" title="${x.eval?(x.eval==='good'?'😊 满意 · 点击改为 😢':'😢 不满意 · 点击取消评价'):'点击记为 😊 满意'}">${x.eval?evalLabel(x.eval):'—'}</button></span>\
 <span><button type="button" class="history-del-btn" data-del-history="${qid}" title="删除这条点名记录">删除</button></span>\
 </div>\
-<div class="stat-row history-q-row${q?'':' is-empty'}" data-history-question="${qid}" title="${q?'点击编辑这次的问题记录':'点击记录这次的问题'}">${q?esc(questionSummary(q,60)):'＋ 记录本次问题'}</div>`}).join(''):'<div class="empty">暂无点名记录</div>'}</div>`;
+<div class="history-q-row${q?'':' is-empty'}" data-history-question="${qid}" title="${q?'点击编辑这次的问题记录':'点击记录这次的问题'}">${q?esc(questionSummary(q,60)):'＋ 记录本次问题'}</div>`}).join(''):'<div class="empty">暂无点名记录</div>'}</div>`;
     
   else body=`<div class="panel">\
 <h2 class="history-section-title">点名统计</h2>\
