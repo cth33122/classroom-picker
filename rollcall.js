@@ -120,7 +120,14 @@ ${candidateArea}${!state.selectedCandidate&&visible.length===0&&state.currentCla
   $('#editSeatBtn').onclick=()=>openSeatEditor();
   $$('#view-rollcall [data-seat]').forEach(b=>b.onclick=()=>openStudentDetailFromSeat(b.dataset.seat));
   const seatColorSel=$('#seatColorMode');
-  if(seatColorSel){seatColorSel.value=state.seatColorMode||'none';seatColorSel.onchange=e=>{state.seatColorMode=e.target.value;renderRollcall();};}
+  if(seatColorSel){
+    seatColorSel.value=seatColorModeValue();
+    seatColorSel.onchange=e=>{
+      state.seatColorMode=seatColorModeValue(e.target.value);
+      DB.put('meta',{id:'seatColorMode',value:state.seatColorMode}).catch(()=>{});   // 记住选择，刷新后保留
+      renderRollcall();
+    };
+  }
   refitSeats();
   requestAnimationFrame(refitSeats);
   $$('[data-difficulty]').forEach(b=>b.onclick=()=>{state.difficulty=Number(b.dataset.difficulty);state.selectedCandidate=null;recommend();});

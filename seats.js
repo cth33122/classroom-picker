@@ -86,7 +86,13 @@ function openStudentDetailFromSeat(seatId){
   openStudentDetail(stu.id);
 }
 
-function seatCellHtml(seat,stats,extraStyle,extraClass,chartId,ctx){
+// 座位表色阶模式：'none' | 'abs'（得分率绝对值）| 'pct'（班内百分位）
+const SEAT_COLOR_MODES=['none','abs','pct'];
+function seatColorModeValue(value){
+  const v=value===undefined||value===null?state.seatColorMode:value;
+  return SEAT_COLOR_MODES.includes(v)?v:'none';
+}
+function seatCellHtml(seat,stats,extraStyle,extraClass,chartId,ctx,colorMode){
   if(!seat)return '<span class="seat seat-vacant"></span>';
   const stu=studentOfSeat(seat);
   const classes=['seat','seat-'+seat.kind];
@@ -97,7 +103,7 @@ function seatCellHtml(seat,stats,extraStyle,extraClass,chartId,ctx){
   if(stu&&stu.focus)classes.push('seat-focus');
   if(stu&&stu.noCall)classes.push('seat-nocall');
   if(stu&&calledToday(stu.id))classes.push('seat-called');
-  const color=stu?seatColorFor(stu,stats,state.seatColorMode||'none'):'';
+  const color=stu?seatColorFor(stu,stats,seatColorModeValue(colorMode)):'';
   if(color)classes.push('seat-tinted');
   const shown=seatTextForSeat(chartId&&document.getElementById?document.getElementById(chartId):null,state.seatLayout,seat,ctx||seatFitCtxFor('roll'));
   if(shown.trunc)classes.push('seat-trunc');
@@ -117,14 +123,15 @@ function seatChartHtml(ctx){
   const span=seatPodiumSpan(layout.cols,groupSize,hasSides);
   const podium=`<div class="seat-podium" style="grid-column:${span}">讲　台</div>`;
   const chartId='seatChartRoll';
-  const left=seatCellHtml(seatById('sideL'),stats,'grid-column:1','',chartId,ctx),right=seatCellHtml(seatById('sideR'),stats,'grid-column:-2','',chartId,ctx);
+  const mode=seatColorModeValue();
+  const left=seatCellHtml(seatById('sideL'),stats,'grid-column:1','',chartId,ctx,mode),right=seatCellHtml(seatById('sideR'),stats,'grid-column:-2','',chartId,ctx,mode);
   let rows='';
   // 教师视角：讲台在最下方，第1排紧挨讲台（内部数据仍是 row 1 = 最靠前）
   for(let row=layout.rows;row>=1;row--){
     let cells='';
     for(let col=1;col<=layout.cols;col++){
       if(col>1&&(col-1)%groupSize===0)cells+='<span class="seat-sep" aria-hidden="true"></span>';
-      cells+=seatCellHtml(layout.seats.find(s=>s.kind==='normal'&&s.row===row&&s.col===col),stats,'','',chartId,ctx);
+      cells+=seatCellHtml(layout.seats.find(s=>s.kind==='normal'&&s.row===row&&s.col===col),stats,'','',chartId,ctx,mode);
     }
     rows+=`<div class="seat-row" style="grid-template-columns:${template}">${cells}</div>`;
   }
@@ -376,25 +383,31 @@ function applySeatLayoutOptions(layout,opts){
   syncSeatGroups(layout);
   return layout;
 }
-function seatEditorCellHtml(seat,extraStyle,extraClass,ctx){
+// 编辑座位里的座位：与点名页座位表使用同一套色阶（state.seatColorMode）
+function seatEditorCellHtml(seat,extraStyle,extraClass,ctx,stats,colorMode){
   const stu=seat.studentId?state.students.find(s=>s.id===seat.studentId):null;
   const classes=['seat','seat-'+seat.kind];
   if(extraClass)classes.push(extraClass);
   if(!stu)classes.push('seat-vacant');
   if(seatEditor&&seatEditor.selectedSeatId===seat.id)classes.push('seat-sel');
+  const color=stu?seatColorFor(stu,stats,seatColorModeValue(colorMode)):'';
+  if(color)classes.push('seat-tinted');
   const shown=seatTextForSeat(document.getElementById('seatChartEditor'),seatEditor?seatEditor.layout:null,seat,ctx||seatFitCtxFor('ed'));
   if(shown.trunc)classes.push('seat-trunc');
   const title=stu?stu.name+'（'+seatLabel(seat)+'）':seatLabel(seat)+'（空位）';
-  const style=extraStyle?' style="'+extraStyle+'"':'';
+  const styleParts=[color?'background:'+color:'',extraStyle||''].filter(Boolean).join(';');
+  const style=styleParts?' style="'+styleParts+'"':'';
   return '<button type="button" class="'+classes.join(' ')+'" data-eseat="'+esc(seat.id)+'" title="'+esc(shown.trunc?title+'（座位太小，已简称）':title)+'"'+style+'>'+esc(shown.text)+'</button>';
 }
 function seatEditorChartHtml(layout,ctx){
   const hasSides=layout.sideSeats!==false;
+  // 色阶与点名页保持一致（同一模式、同一份统计）
+  const stats=classScoreStats(),mode=seatColorModeValue();
   // 关闭“讲台两侧”时不画任何占位，否则空占位仍会占住两侧的网格列
   const side=(id,col)=>{
     if(!hasSides)return '';
     const s=layout.seats.find(x=>x.id===id);
-    return s?seatEditorCellHtml(s,'grid-column:'+col,'',ctx):'<span class="seat seat-vacant seat-side" style="grid-column:'+col+'"></span>';
+    return s?seatEditorCellHtml(s,'grid-column:'+col,'',ctx,stats,mode):'<span class="seat seat-vacant seat-side" style="grid-column:'+col+'"></span>';
   };
   let rows='';
   const groupSize=Number(layout.groupSize)||2;
@@ -404,7 +417,7 @@ function seatEditorChartHtml(layout,ctx){
     let cells='';
     for(let col=1;col<=layout.cols;col++){
       if(col>1&&(col-1)%groupSize===0)cells+='<span class="seat-sep" aria-hidden="true"></span>';
-      cells+=seatEditorCellHtml(layout.seats.find(s=>s.kind==='normal'&&s.row===row&&s.col===col),'','',ctx);
+      cells+=seatEditorCellHtml(layout.seats.find(s=>s.kind==='normal'&&s.row===row&&s.col===col),'','',ctx,stats,mode);
     }
     rows+='<div class="seat-row" style="grid-template-columns:'+template+'">'+cells+'</div>';
   }

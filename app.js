@@ -1,7 +1,7 @@
 // 入口：视图分发、数据加载、service worker 注册
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v151';
+const APP_VERSION = 'v152';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -77,7 +77,10 @@ async function reload(){
   for(const exam of state.exams){const storedTotal=Number(exam.totalScore);if(Number.isFinite(storedTotal)&&storedTotal>100)continue;const max=Math.max(...state.examResults.filter(r=>r.examId===exam.id).map(r=>Number(r.result?.score)||0),0);if(max>100){exam.totalScore=[120,150,160,180,200].find(n=>max<=n)||Math.ceil(max/10)*10;await DB.put('exams',exam);}}
   state.settings=mergeConfig(await DB.getSettings());
   // 恢复上次选择的班级（失效时退回第一个班级）
-  const savedClass=normalizeClassName((await DB.all('meta')).find(x=>x&&x.id==='currentClass')?.value||'');
+  const meta=await DB.all('meta');
+  const savedClass=normalizeClassName(meta.find(x=>x&&x.id==='currentClass')?.value||'');
+  // 恢复座位表色阶选择（刷新/重开后仍保持原来的选择）
+  state.seatColorMode=seatColorModeValue(meta.find(x=>x&&x.id==='seatColorMode')?.value||'none');
   const available=classes();
   const wanted=[state.currentClass,savedClass].filter(Boolean).map(v=>normalizeClassName(v)).find(v=>available.includes(v));
   state.currentClass=wanted||available[0]||'';
