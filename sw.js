@@ -1,4 +1,4 @@
-const CACHE = 'class-rollcall-v139';
+const CACHE = 'class-rollcall-v140';
 const BASE = new URL('./', self.location.href);
 const ASSETS = ['./', './index.html', './styles.css', './db.js', './algorithm.js', './importer.js', './exporter.js', './core.js', './seats.js', './questions.js', './charts.js', './rollcall.js', './students.js', './history.js', './data.js', './settings.js', './app.js', './manifest.json', './vendor/jszip.min.js', './icons/icon-48.png', './icons/icon-72.png', './icons/icon-96.png', './icons/icon-144.png', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-192-maskable.png', './icons/icon-512-maskable.png'].map(path => new URL(path, BASE).href);
 self.addEventListener('install', event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)).then(() => self.skipWaiting())));

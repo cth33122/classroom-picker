@@ -21,7 +21,8 @@ function renderHistory(){
   const difficultyCounts=[1,2,3].map(level=>timeline.filter(x=>Number(x.difficulty)===level).length),f=state.historyFilter||'all',options=[['all','总计'],['calls20','近20次点名'],['calls30','近30次点名'],['calls50','近50次点名'],['week','近1周'],['twoWeeks','近2周'],['month','近1月'],['twoMonths','近2月'],['threeMonths','近3月']],arrow=k=>sortArrow(sort.key===k,sort.direction);
   const nav=`<div class="stats-switch"><button class="secondary ${mode==='counts'?'active':''}" id="countsBtn">点名统计</button><button class="secondary ${mode==='timeline'?'active':''}" id="timelineBtn">点名记录</button></div>`;
   // 题目难度统计已并入“点名记录”，固定显示在记录列表上方
-  const difficultyPanel=`<div class="panel difficulty-stats"><h2 class="history-section-title">题目难度统计</h2><div class="difficulty-chart"><canvas id="difficultyChart"></canvas><div class="difficulty-legend"><div><i class="legend-dot easy"></i>简单：${difficultyCounts[0]}次</div><div><i class="legend-dot medium"></i>适中：${difficultyCounts[1]}次</div><div><i class="legend-dot hard"></i>困难：${difficultyCounts[2]}次</div></div></div></div>`;
+  // 题目难度统计：图注已经画进画布里，外部不再放文字
+  const difficultyPanel=`<div class="panel difficulty-stats"><h2 class="history-section-title">题目难度统计</h2><div class="difficulty-chart"><canvas id="difficultyChart"></canvas></div></div>`;
   // 统计范围与合计点名次数在同一行
   const statsRow=`<div class="grid">\
 <div class="field">\
