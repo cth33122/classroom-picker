@@ -36,32 +36,37 @@ function renderHistory(){
   let body='';
   if(mode==='timeline') body=`${difficultyPanel}<div class="panel">\
 <h2 class="history-section-title">点名记录</h2>\
-<div class="table-header history-table-header history-del-header">\
+<div class="table-header history-timeline-header">\
 <button data-history-sort="name">姓名${arrow('name')}</button>\
 <button data-history-sort="at">时间戳${arrow('at')}</button>\
 <button data-history-sort="difficulty">难度${arrow('difficulty')}</button>\
+<span>评价</span>\
 <span>删除</span>\
-</div>${ordered.length?ordered.map(x=>{const s=classStudents.find(st=>st.id===x.studentId);return `<div class="stat-row history-row history-del-row">\
+</div>${ordered.length?ordered.map(x=>{const s=classStudents.find(st=>st.id===x.studentId);const q=String(x.question||'').trim();const rowId='historyRow-'+String(x.id).replace(/[^\w-]/g,'');const qid=esc(String(x.id));return `<div class="stat-row history-timeline-row" id="${rowId}">\
 <span>\
 <button class="student-link" data-history-student="${esc(x.studentId)}">${esc(s?.displayName||s?.name||x.studentId)}</button>${studentTags(s)}\
 </span>\
 <span>${new Date(x.at).toLocaleString()}</span>\
 <span>${['','简单','适中','困难'][x.difficulty]||'—'}</span>\
-<span><button type="button" class="history-del-btn" data-del-history="${esc(String(x.id))}" title="删除这条点名记录">删除</button></span>\
-</div>`}).join(''):'<div class="empty">暂无点名记录</div>'}</div>`;
+<span class="history-eval-cell"><button type="button" class="history-eval-btn${x.eval?' is-'+x.eval:''}" data-history-eval="${qid}" title="${x.eval?(x.eval==='good'?'😊 满意 · 点击改为 😢':'😢 不满意 · 点击取消评价'):'点击记为 😊 满意'}">${x.eval?evalLabel(x.eval):'—'}</button></span>\
+<span><button type="button" class="history-del-btn" data-del-history="${qid}" title="删除这条点名记录">删除</button></span>\
+</div>\
+<div class="stat-row history-q-row${q?'':' is-empty'}" data-history-question="${qid}" title="${q?'点击编辑这次的问题记录':'点击记录这次的问题'}">${q?esc(questionSummary(q,60)):'＋ 记录本次问题'}</div>`}).join(''):'<div class="empty">暂无点名记录</div>'}</div>`;
     
   else body=`<div class="panel">\
 <h2 class="history-section-title">点名统计</h2>\
-<div class="table-header history-table-header">\
+<div class="table-header history-counts-header">\
 <button data-history-sort="name">学生${arrow('name')}</button>\
 <button data-history-sort="count">点名次数${arrow('count')}</button>\
 <button data-history-sort="date">日期${arrow('date')}</button>\
-</div>${rows.length?rows.map(s=>`<div class="stat-row history-row">\
+<span>详情</span>\
+</div>${rows.length?rows.map(s=>`<div class="stat-row history-counts-row">\
 <span>\
 <button class="student-link" data-history-student="${esc(s.id)}">${esc(s.displayName||s.name)}</button>${studentTags(s)}\
 </span>\
 <span>${counts.get(s.id)||0}次</span>\
 <span>${lastCall.has(s.id)?relativeCallTime(lastCall.get(s.id)):'未点名'}</span>\
+<span><button type="button" class="student-link question-detail-link" data-student-questions="${esc(s.id)}" title="查看该生的问题记录">详情</button></span>\
 </div>`).join(''):'<div class="empty">本班暂无学生</div>'}</div>`;
     
   $('#view-history').innerHTML=`<div class="panel">${nav}${statsRow}</div>${body}`;
@@ -70,6 +75,24 @@ function renderHistory(){
     $('#timelineBtn').onclick=()=>{state.statsMode='timeline';state.historySort={key:'at',direction:'desc'};renderHistory();};
     $('#countsBtn').onclick=()=>{state.statsMode='counts';state.historySort={key:'count',direction:'desc'};renderHistory();};
     $$('[data-history-sort]').forEach(b=>b.onclick=()=>toggleHistorySort(b.dataset.historySort));
+    // 评价列：点“—”记为 😊 → 再点变 😢 → 再点取消（三态循环，写库后重绘）
+    $$('[data-history-eval]').forEach(b=>b.onclick=async()=>{
+      const rec=state.history.find(x=>String(x.id)===String(b.dataset.historyEval));
+      if(!rec){toast('这条记录已不存在');renderHistory();return;}
+      const next=!rec.eval?'good':(rec.eval==='good'?'bad':null);
+      await saveHistoryReview(rec,{eval:next});
+      toast(next?(next==='good'?'已记为 😊 满意':'已记为 😢 不满意'):'已取消这条的评价');
+      renderHistory();
+      refreshRollcallAfterReview();
+    });
+    // 每条记录下方的问题栏：点开这一条的内联编辑框（没有内容时用来补录）
+    $$('[data-history-question]').forEach(el=>el.onclick=()=>{
+      const rec=state.history.find(x=>String(x.id)===String(el.dataset.historyQuestion));
+      if(!rec){toast('这条记录已不存在');renderHistory();return;}
+      openRecordQuestionEditor(rec.id,()=>renderHistory());
+    });
+    // “详情”按钮：打开该生的问题记录弹窗（停在最新一条）
+    $$('[data-student-questions]').forEach(b=>b.onclick=()=>openStudentQuestions(b.dataset.studentQuestions,{onClose:()=>renderHistory()}));
     // 删除单条点名记录
     $$('[data-del-history]').forEach(b=>b.onclick=async()=>{
       const raw=b.dataset.delHistory;
@@ -82,9 +105,10 @@ function renderHistory(){
       state.history=state.history.filter(x=>String(x.id)!==raw);
       renderHistory();
       const rv=$('#view-rollcall'),rs=rv?rv.scrollTop:0;
-      renderRollcall();
+      if(state.view==='rollcall')renderRollcall();
       if(rv)rv.scrollTop=rs;
       if(hv)hv.scrollTop=hs;
+      if(state.studentDetail)renderStudentDetail(state.studentDetail);
       toast('已删除该条点名记录');
     });
     // 点学生姓名 → 直接进入该生的详情页（成绩记录 + 点名记录合并显示）

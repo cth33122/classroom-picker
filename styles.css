@@ -65,7 +65,9 @@ button { font:inherit; cursor:pointer; }.primary,.secondary,.danger { min-height
 .seat-podium { display:flex; align-items:center; justify-content:center; min-height:34px; padding:3px 8px; border:1px solid var(--mint); border-radius:5px; background:var(--mint); color:var(--teal); font-size:12px; font-weight:700; letter-spacing:4px; }
 .seat-row { display:grid; gap:var(--seat-gap,4px); align-items:stretch; }
 .seat-sep { background:#9ec3ba; border-radius:1px; }
-.seat { min-height:34px; padding:2px 3px; border:1px solid var(--line); border-radius:5px; background:#fff; color:var(--ink); font-size:var(--seat-font,11px); line-height:1.15; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.seat { min-height:34px; padding:2px 3px; border:1px solid var(--line); border-radius:5px; background:#fff; color:var(--ink); font-size:var(--seat-font,11px); line-height:1.15; font-weight:600; white-space:nowrap; overflow:hidden; }
+/* 空间不足被缩写（如 欧阳娜娜 → 欧阳）：底部留一条细线提示“这里不是全名”，不遮挡文字、不出现 X… */
+.seat-trunc { box-shadow:inset 0 -3px 0 rgba(180,35,24,.34); }
 .seat-vacant { background:var(--bg); border-style:dashed; color:var(--muted); font-weight:400; }
 .seat-side { background:#fff; }
 .seat-cand { border:2px solid var(--danger); box-shadow:0 0 0 2px rgba(180,35,24,.38), 0 0 7px 2px rgba(180,35,24,.30); }
@@ -88,18 +90,44 @@ body.modal-open .view-track { touch-action:none; }
 .seat-editor-bar .seat-check { color:var(--ink); }
 .seat-editor-bar button { min-height:34px; padding:6px 12px; }
 .seat-editor-body { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; overflow:auto; padding-top:10px; }
-.seat-editor .seat { min-height:38px; font-size:var(--seat-font,12px); }
+/* 座位区本身就是横向滚动容器：手机放不下整排时可以左右推，字不必再被压到看不清 */
+.seat-editor-grid { min-width:0; max-width:100%; overflow-x:auto; }
+/* 一个座位都没安排时也留出约 5 行的高度，方便看清版式、也方便从“未安排”里点学生落座 */
+.seat-editor-grid .seat-chart { min-height:190px; }
+/* 编辑器座位不再单独写 font-size：否则会盖掉座位表页的 --seat-font 自适应，字始终停在 12px 导致姓名被截断 */
+.seat-editor .seat { min-height:34px; }
 .seat-editor-pool { border-top:1px dashed var(--line); margin-top:10px; padding-top:10px; }
 .seat-editor-pool h3 { margin:0; }
 .seat-pool-head { display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap; }
 .seat-pool-head h3 { margin:0; min-width:0; }
 .seat-pool-head .secondary { flex:0 0 auto; min-height:34px; padding:6px 12px; }
-.seat-pool-list { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; }
+.seat-pool-buttons { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+/* 未安排区列表：人多时自己上下滚动，不会把座位表顶出屏幕 */
+.seat-pool-list { display:flex; flex-wrap:wrap; gap:6px; margin:8px 0; max-height:30vh; overflow-y:auto; }
 .seat-chip { border:1px solid var(--line); border-radius:999px; background:#fff; padding:5px 11px; font-size:13px; color:var(--ink); }
 .seat-chip.is-selected { background:var(--teal); border-color:var(--teal); color:#fff; }
-.drop-active { outline:2px dashed var(--teal); outline-offset:1px; }
-.seat-drag-ghost { position:fixed; z-index:9999; transform:translate(-50%,-50%); padding:4px 11px; border-radius:999px; background:var(--teal); color:#fff; font-size:13px; pointer-events:none; box-shadow:0 4px 12px rgba(0,0,0,.25); }
+/* 未安排区里始终留一个“可落座”的空位：点中座位再点它，就把学生从座位收回来 */
+.seat-pool-drop { display:inline-flex; align-items:center; min-height:30px; padding:4px 11px; border:1px dashed var(--line); border-radius:999px; background:var(--bg); color:var(--muted); font-size:12px; cursor:pointer; }
+.seat-pool-drop.is-target { border-color:var(--teal); border-style:solid; background:var(--mint); color:var(--teal); font-weight:700; }
+/* 编辑座位：关闭前确认（顶部 × 返回编辑 / 左放弃修改 / 右确认修改） */
+.seat-close-backdrop { z-index:20; }
+.seat-close-card { width:min(460px,100%); max-height:calc(100vh - 32px); overflow:auto; position:relative; }
+.seat-close-card h3 { margin:0 0 12px; }
+.seat-close-x { position:absolute; top:6px; right:8px; width:38px; height:38px; min-height:0; border:0; border-radius:7px; background:transparent; color:var(--muted); font-size:26px; line-height:1; }
+.seat-close-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.seat-close-actions button { display:flex; flex-direction:column; align-items:flex-start; gap:4px; min-height:64px; padding:10px 12px; text-align:left; }
+.seat-close-actions button strong { font-size:15px; }
+.seat-close-actions button small { font-size:12px; line-height:1.45; font-weight:400; opacity:.85; }
+.seat-close-back { width:100%; min-height:38px; margin-top:10px; border:0; background:transparent; color:var(--muted); font-size:13px; text-decoration:underline; text-underline-offset:3px; }
 .seat-import-card { width:min(560px,100%); max-height:90vh; }
+/* 导入结果卡：把识别结果和逐条判断讲清楚 */
+.seat-import-stats { margin:0 0 10px; padding:10px 12px; border-radius:7px; background:var(--mint); color:var(--teal); font-size:14px; font-weight:700; }
+.seat-import-notes { margin:0 0 10px; padding:0; list-style:none; display:grid; gap:6px; }
+.seat-import-note { position:relative; padding:7px 10px 7px 24px; border:1px solid var(--line); border-radius:6px; background:#fff; font-size:13px; line-height:1.5; color:var(--ink); }
+.seat-import-note::before { content:'•'; position:absolute; left:9px; top:6px; color:var(--muted); font-weight:700; }
+.seat-import-note.rotate { border-color:#bfe3dd; background:var(--mint); }
+.seat-import-note.group, .seat-import-note.empty { color:var(--muted); }
+.seat-import-note.info::before { content:'✓'; color:var(--teal); }
 .seat-import-card textarea { width:100%; min-height:130px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; font:inherit; font-size:14px; resize:vertical; }
 .selected-candidate { border-color:var(--teal); background:var(--mint); }
 .student-link { border:0; padding:0; background:transparent; color:var(--teal); font:inherit; font-weight:700; text-align:left; }
@@ -187,10 +215,19 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
   .seat-chart { --seat-sep:1px; --seat-gap:2px; }
   .seat { padding:1px; border-radius:4px; min-height:28px; }
   .seat-podium { padding:2px 4px; letter-spacing:2px; }
-  /* 编辑座位：手机端改为全屏铺满，不再有两侧留白 */
+  /* 编辑座位：手机端改为全屏铺满，不再有两侧留白；高度与首页对齐，字号交给 JS 自适应 */
   .modal-backdrop.seat-modal { padding:0; align-items:stretch; }
   .seat-modal .seat-editor { width:100%; height:auto; max-height:none; overflow:hidden; border-radius:0; padding:10px calc(10px + env(safe-area-inset-right)) calc(10px + env(safe-area-inset-bottom)) calc(10px + env(safe-area-inset-left)); }
-  .seat-modal .seat-editor .seat { min-height:32px; font-size:var(--seat-font,11px); }
+  .seat-modal .seat-editor .seat { min-height:28px; }
+  /* 手机上纵向空间紧：未安排区更矮、更早开始上下滚动 */
+  .seat-pool-list { max-height:22vh; }
+  .seat-editor-grid .seat-chart { min-height:165px; }
+  .seat-close-actions { grid-template-columns:1fr; }
+  .seat-close-actions button { min-height:58px; }
+  /* 点名记录挤了 5 列：手机上映小一号字，避免时间戳换行 */
+  .history-timeline-header,.history-timeline-row,.history-detail-header,.history-detail-row,.history-counts-header,.history-counts-row { font-size:12px; }
+  .history-timeline-row > span,.history-detail-row > span,.history-counts-row > span { min-width:0; }
+  .history-eval-btn { font-size:14px; }
 }
 @media (max-width:719px) {
   .tabs { order:2; gap:3px; padding:7px 8px calc(7px + env(safe-area-inset-bottom)); border-top:1px solid var(--line); background:rgba(255,255,255,.97); box-shadow:0 -4px 16px rgba(22,48,43,.08); overflow:visible; }
@@ -199,10 +236,64 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
   .toast { bottom:calc(84px + env(safe-area-inset-bottom)); }
   .view { padding-bottom:20px; }
 }
-/* 点名记录第 4 列：删除该条记录（仅统计页使用，不影响学生详情页的 history-row） */
-.history-del-header,.history-del-row { grid-template-columns:78fr 96fr 74fr 48px; }
+/* 点名记录（统计页）：姓名 / 时间戳 / 难度 / 评价 / 删除，5 列 */
+.history-timeline-header,.history-timeline-row { grid-template-columns:70fr 100fr 46fr 44px 48px; }
+/* 点名统计（统计页）：学生 / 次数 / 日期 / 详情，4 列 */
+.history-counts-header,.history-counts-row { grid-template-columns:1.4fr .8fr .8fr 48px; }
 .history-del-btn { width:100%; min-height:0; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--danger); font-size:12px; font-weight:700; padding:4px 6px; }
 .history-del-btn:hover { border-color:var(--danger); background:#fde8e7; }
+/* 学生详情页的点名记录：时间戳 / 难度 / 评价 / 详情（去掉班级列） */
+.history-detail-header,.history-detail-row { grid-template-columns:120fr 48fr 44px 48px; }
+/* 评价列：点一下记为 😊，再点同一档取消 */
+.history-eval-cell { text-align:center; }
+.history-eval-btn { width:100%; min-height:30px; padding:2px 0; border:1px solid transparent; border-radius:6px; background:#fff; font-size:15px; line-height:1.2; cursor:pointer; }
+.history-eval-btn:hover { border-color:var(--line); background:var(--bg); }
+.history-eval-btn.is-good { background:#e8f7ef; border-color:#b7e4c9; }
+.history-eval-btn.is-bad { background:#fdeceb; border-color:#f3c2bd; }
+.question-detail-link { font-size:13px; white-space:nowrap; }
+/* 每条点名记录下方的问题栏：横跨所有列，最多两行；没有内容时是一栏可点的“＋ 记录本次问题” */
+.history-q-row { grid-column:1 / -1; margin:-4px 0 6px; padding:4px 0 2px 10px; border-left:2px solid var(--mint); color:var(--teal); font-size:12px; line-height:1.5; cursor:pointer; white-space:nowrap;
+  display:-webkit-box; overflow:hidden; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.history-q-row:hover { border-left-color:var(--teal); text-decoration:underline; text-underline-offset:2px; }
+.history-q-row.is-empty { border-left-style:dashed; border-left-color:var(--line); color:var(--muted); text-decoration:none; }
+.history-q-row.is-empty:hover { border-left-color:var(--teal); color:var(--teal); text-decoration:none; }
+/* 点名结果卡（已点名的那位同学，不再是可点按钮） */
+.candidate-result { border:1px solid var(--teal); background:var(--mint); border-radius:8px; padding:12px 14px; }
+.candidate-result-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.candidate-result-head strong { font-size:20px; }
+.candidate-result-diff { color:#fff; background:var(--teal); border-radius:999px; padding:2px 10px; font-size:12px; font-weight:700; }
+.candidate-result-meta { display:flex; flex-wrap:wrap; gap:4px 14px; margin-top:6px; color:var(--muted); font-size:13px; }
+.candidate-result-eval { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-top:10px; padding-top:10px; border-top:1px dashed rgba(15,118,110,.35); }
+.candidate-result-eval .eval-btn { min-width:46px; min-height:36px; border:1px solid var(--line); border-radius:8px; background:#fff; font-size:20px; line-height:1; cursor:pointer; }
+.candidate-result-eval .eval-btn:hover { border-color:var(--teal); }
+.candidate-result-eval .eval-btn.is-on { border-color:var(--teal); box-shadow:0 0 0 2px rgba(15,118,110,.25); }
+.candidate-result-eval .eval-btn.is-good { background:#e8f7ef; }
+.candidate-result-eval .eval-btn.is-bad { background:#fdeceb; }
+.question-record-btn { min-height:36px; padding:6px 12px; font-size:13px; }
+.question-latest { font-size:13px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* 记录问题 / 问题记录弹窗 */
+.question-record-card { width:min(520px,100%); }
+.eval-picker { display:flex; align-items:center; gap:8px; }
+.eval-btn { min-height:34px; padding:4px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; font-size:16px; cursor:pointer; }
+.eval-btn:hover { border-color:var(--teal); }
+.eval-btn.is-on { border-color:var(--teal); box-shadow:0 0 0 2px rgba(15,118,110,.22); }
+.eval-btn.is-good { background:#e8f7ef; }
+.eval-btn.is-bad { background:#fdeceb; }
+.student-questions-card { width:min(620px,100%); height:min(86vh,900px); display:flex; flex-direction:column; overflow:hidden; }
+.question-list { flex:1 1 auto; min-height:0; overflow-y:auto; display:grid; gap:10px; padding-right:2px; }
+.question-row { border:1px solid var(--line); border-radius:8px; padding:10px 12px; background:#fff; }
+.question-row.is-focus { border-color:var(--teal); box-shadow:0 0 0 2px rgba(15,118,110,.25); }
+/* 还没复盘的记录也能编辑，用虚线和灰字提示“这里可以补录” */
+.question-row.is-todo { border-style:dashed; background:var(--bg); }
+.question-done { color:var(--teal); background:var(--mint); }
+.question-todo { color:var(--muted); background:#eef2f1; }
+.question-row-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:8px; }
+.question-time { color:var(--ink); font-size:13px; font-weight:700; }
+.question-diff { flex:0 0 auto; }
+.question-del { margin-left:auto; min-height:0; padding:3px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--danger); font-size:12px; font-weight:700; cursor:pointer; }
+.question-del:hover { border-color:var(--danger); background:#fde8e7; }
+.question-text { width:100%; min-height:52px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; background:#fff; color:var(--ink); font:inherit; font-size:14px; line-height:1.5; resize:vertical; }
+.question-review-at { margin:6px 0 0; font-size:12px; }
 /* 设置页“数据重置”：两个按钮同一行并排 */
 .reset-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .reset-actions > * { flex:1 1 0; min-width:118px; }

@@ -86,7 +86,7 @@ function openStudentDetailFromSeat(seatId){
   openStudentDetail(stu.id);
 }
 
-function seatCellHtml(seat,stats,extraStyle,extraClass){
+function seatCellHtml(seat,stats,extraStyle,extraClass,chartId,ctx){
   if(!seat)return '<span class="seat seat-vacant"></span>';
   const stu=studentOfSeat(seat);
   const classes=['seat','seat-'+seat.kind];
@@ -99,13 +99,14 @@ function seatCellHtml(seat,stats,extraStyle,extraClass){
   if(stu&&calledToday(stu.id))classes.push('seat-called');
   const color=stu?seatColorFor(stu,stats,state.seatColorMode||'none'):'';
   if(color)classes.push('seat-tinted');
-  const text=stu?(stu.displayName||stu.name):(seat.kind==='side'?(seat.label||'讲台旁'):'');
+  const shown=seatTextForSeat(chartId&&document.getElementById?document.getElementById(chartId):null,state.seatLayout,seat,ctx||seatFitCtxFor('roll'));
+  if(shown.trunc)classes.push('seat-trunc');
   const title=stu?`${stu.name}（${seatLabel(seat)}）`:`${seatLabel(seat)}（空位）`;
   const styleParts=[color?`background:${color}`:'',extraStyle||''].filter(Boolean).join(';');
   const style=styleParts?` style="${styleParts}"`:'';
-  return `<button type="button" class="${classes.join(' ')}" data-seat="${esc(seat.id)}" title="${esc(title)}"${style}>${esc(text)}</button>`;
+  return `<button type="button" class="${classes.join(' ')}" data-seat="${esc(seat.id)}" title="${esc(shown.trunc?title+'（座位太小，已简称）':title)}"${style}>${esc(shown.text)}</button>`;
 }
-function seatChartHtml(){
+function seatChartHtml(ctx){
   if(!state.currentClass)return '<div class="empty">导入学生后即可排座位</div>';
   const layout=state.seatLayout;
   if(!layout)return '<div class="empty">正在准备座位表…</div>';
@@ -115,51 +116,217 @@ function seatChartHtml(){
   const template=seatGridTemplate(layout.cols,groupSize);
   const span=seatPodiumSpan(layout.cols,groupSize,hasSides);
   const podium=`<div class="seat-podium" style="grid-column:${span}">讲　台</div>`;
-  const left=seatCellHtml(seatById('sideL'),stats,'grid-column:1'),right=seatCellHtml(seatById('sideR'),stats,'grid-column:-2');
+  const chartId='seatChartRoll';
+  const left=seatCellHtml(seatById('sideL'),stats,'grid-column:1','',chartId,ctx),right=seatCellHtml(seatById('sideR'),stats,'grid-column:-2','',chartId,ctx);
   let rows='';
   // 教师视角：讲台在最下方，第1排紧挨讲台（内部数据仍是 row 1 = 最靠前）
   for(let row=layout.rows;row>=1;row--){
     let cells='';
     for(let col=1;col<=layout.cols;col++){
       if(col>1&&(col-1)%groupSize===0)cells+='<span class="seat-sep" aria-hidden="true"></span>';
-      cells+=seatCellHtml(layout.seats.find(s=>s.kind==='normal'&&s.row===row&&s.col===col),stats);
+      cells+=seatCellHtml(layout.seats.find(s=>s.kind==='normal'&&s.row===row&&s.col===col),stats,'','',chartId,ctx);
     }
     rows+=`<div class="seat-row" style="grid-template-columns:${template}">${cells}</div>`;
   }
-  return `<div class="seat-chart" style="--seat-cols:${layout.cols}">\
+  return `<div class="seat-chart" id="${chartId}" style="--seat-cols:${layout.cols}">\
 ${rows}\
 <div class="seat-podium-row" style="grid-template-columns:${template}">${hasSides?left:''}${podium}${hasSides?right:''}</div>\
 </div>`;
 }
-// 座位姓名自适应字号：按“可用座位宽度 ÷ 最长文本”缩小，尽量完整显示（窄屏极限压缩）
-function fitChartNames(chart,layout,maxFont){
-  if(!chart||!layout)return;
+// ---------- 姓名自适应字号：先量真实座位宽，再决定“字号 + 能放几个字” ----------
+// 下限 9.5px：三字姓名在 360px 屏上仍能完整显示；再挤就靠“横向滑动 + 保姓氏”，不把字压到看不清
+const SEAT_FONT_MIN=9.5;
+const SEAT_FONT_ESTIMATE=11;
+
+// 姓名在特定字号下的实际渲染宽度（canvas 量宽会把 C 等西文 / 生僻字差异也算进去）
+let seatMeasureCanvas=null;
+function seatTextWidth(text,font){
+  const t=String(text||'');
+  if(!t)return 0;
+  if(typeof document==='undefined')return t.length*SEAT_FONT_ESTIMATE;
+  try{
+    seatMeasureCanvas=seatMeasureCanvas||document.createElement('canvas');
+    const mctx=seatMeasureCanvas.getContext('2d');
+    if(!mctx)return t.length*SEAT_FONT_ESTIMATE;
+    if(mctx.font!==font)mctx.font=font;
+    return mctx.measureText(t).width;
+  }catch(err){return t.length*SEAT_FONT_ESTIMATE;}
+}
+
+// 座位里能完整显示的文本：放得下就全名，放不下就退到“姓”（复姓取前两字，如 欧阳娜娜→欧阳）
+function seatDisplayText(full,font,availPx,primary){
+  const text=String(full||'').trim();
+  const base=String(primary||'').slice(0,1);
+  if(!text)return {text:'',trunc:false,wide:false};
+  if(!(availPx>0))return {text:text,trunc:false,wide:true};
+  const fullW=seatTextWidth(text,font);
+  if(fullW<=availPx)return {text:text,trunc:false,wide:true};
+  if(text.length<=1)return {text:text,trunc:false,wide:true};
+  const cut=[...text][0]+([...text][1]||'');
+  if(seatTextWidth(cut,font)<=availPx)return {text:cut,trunc:true,wide:false};
+  return {text:base,trunc:true,wide:false};
+}
+// 量宽度前先摘掉缩写类，避免“已缩写的文字”反过来影响测量；字号/字体只取 family+size，
+// 不走 getComputedStyle(el).font —— 那个字符串带 line-height 和可变字重，canvas 可能解析失败退回默认字体
+function seatMeasureEl(el){
+  const had=el.classList.contains('seat-trunc');
+  if(had)el.classList.remove('seat-trunc');
+  const cs=getComputedStyle(el);
+  const fullW=seatTextWidth(el.textContent,measureFont(cs.fontSize,cs.fontFamily));
+  if(had)el.classList.add('seat-trunc');
+  return fullW;
+}
+function measureFont(size,family){
+  const s=parseFloat(size);
+  return (s>0?s:SEAT_FONT_ESTIMATE)+'px '+(family||'sans-serif');
+}
+// 本座位真正能放多少 px 文字：优先用上一次量到的真实值，首帧退回按可用宽度估算
+function seatTextBudget(chart,layout){
+  if(chart&&chart.dataset&&chart.dataset.seatFit)return Number(chart.dataset.seatFit)||0;
+  if(chart&&layout){
+    const cols=Math.max(1,Number(layout.cols)||1);
+    const groupSize=Number(layout.groupSize)||2;
+    const seps=groupSize>0?Math.max(0,Math.ceil(cols/groupSize)-1):0;
+    const w=seatAvailWidth(chart);
+    if(w>0){
+      const cs=getComputedStyle(chart);
+      const gap=parseFloat(cs.getPropertyValue('--seat-gap'))||2;
+      const sep=parseFloat(cs.getPropertyValue('--seat-sep'))||1;
+      const track=(w-(cols-1)*gap-seps*sep)/cols;
+      if(track>0)return track-9;
+    }
+  }
+  return 0;
+}
+// 一个座位最终显示的文本：能放全就全名，放不下退到“姓”，最后才截断（不再出现 X…）
+// ctx 可传入 {font,budget}：同一次渲染里只量一次，避免每个座位都去 getComputedStyle
+function seatTextForSeat(chart,layout,seat,ctx){
+  const stu=studentOfSeat(seat);
+  const full=stu?String(stu.displayName||stu.name||''):(seat.kind==='side'?String(seat.label||'讲台旁'):'');
+  if(!full)return {text:'',trunc:false};
+  if(!chart||!chart.ownerDocument)return {text:full,trunc:false};
+  let font=ctx&&ctx.font,budget=ctx?ctx.budget:0;
+  if(!font||!(budget>0)){
+    const cfs=chart.ownerDocument.defaultView.getComputedStyle(chart);
+    const size=parseFloat(cfs.getPropertyValue('--seat-font'))||SEAT_FONT_ESTIMATE;
+    if(!font)font=measureFont(size,cfs.fontFamily);
+    if(!(budget>0))budget=seatTextBudget(chart,layout);
+  }
+  const shown=seatDisplayText(full,font,budget,stu?stu.name:full);
+  return {text:shown.text,trunc:shown.trunc};
+}
+// 按“谁最挤”定字号：整排能放下就 11px；放不下就跟着最挤的座位缩，但不再低于 SEAT_FONT_MIN
+// 返回 {font,budget} 供渲染座位时复用，保证“量字号”和“定文本”用的是同一套基准
+function fitChartNames(chart,layout,maxFont,maxNames){
+  if(!chart||!layout)return null;
   const cols=Math.max(1,Number(layout.cols)||1),groupSize=Number(layout.groupSize)||2;
   const seps=groupSize>0?Math.max(0,Math.ceil(cols/groupSize)-1):0;
-  const css=getComputedStyle(chart);
-  const gap=parseFloat(css.getPropertyValue('--seat-gap'))||parseFloat(css.columnGap)||4;
-  const sep=parseFloat(css.getPropertyValue('--seat-sep'))||2;
-  const width=chart.clientWidth;
-  if(!width)return;
+  const cap=maxFont||11,limit=Math.max(1,maxNames||3);
+  const seats=chart.querySelectorAll('.seat');
+  if(!seats.length)return null;
+  const cs=getComputedStyle(chart);
+  const gap=parseFloat(cs.getPropertyValue('--seat-gap'))||4;
+  const sep=parseFloat(cs.getPropertyValue('--seat-sep'))||2;
+  const width=seatAvailWidth(chart);
+  if(!(width>0))return null;
+  const sc=getComputedStyle(seats[0]);
+  const gutters=(parseFloat(sc.borderLeftWidth)||0)+(parseFloat(sc.borderRightWidth)||0)+(parseFloat(sc.paddingLeft)||0)+(parseFloat(sc.paddingRight)||0);
   const trackW=(width-(cols-1)*gap-seps*sep)/cols;
-  if(!(trackW>0))return;
-  // 真实可用文本宽度 = 轨道宽 - 边框 - 左右内边距
-  const seatEl=chart.querySelector('.seat');
-  let usable=trackW-4;
-  if(seatEl){const sc=getComputedStyle(seatEl);usable=trackW-(parseFloat(sc.borderLeftWidth)+parseFloat(sc.borderRightWidth))-(parseFloat(sc.paddingLeft)+parseFloat(sc.paddingRight));}
-  // 取所有座位实际显示的文本（学生姓名，或讲台两侧的标签）里最长的一个
-  const texts=layout.seats.map(s=>{const stu=studentOfSeat(s);if(stu)return String(stu.displayName||stu.name||'');return s.kind==='side'?String(s.label||'讲台旁'):'';});
-  const maxLen=Math.max(2,...texts.map(t=>t.trim().length));
-  const size=Math.max(8,Math.min(maxFont||11,usable/maxLen));
+  if(!(trackW>0))return null;
+  let textW=Math.max(0,trackW-gutters);
+  // 只量一次：每个座位“显示全名”需要多宽
+  const widths=[];
+  seats.forEach(el=>widths.push(seatMeasureEl(el)));
+  widths.sort((a,b)=>a-b);
+  if((widths[widths.length-1]||0)>textW){
+    // 整排放不下：先缩字号；缩到下限还不够，就把宽度基准改成“第 limit 长”的姓名，只让个别长名缩写
+    const floorW=textW*cap/SEAT_FONT_MIN;
+    const pivot=widths[Math.max(0,widths.length-limit)]||0;
+    textW=pivot>floorW?pivot:floorW;
+  }
+  const size=Math.min(cap,Math.max(SEAT_FONT_MIN,textW>0?(trackW-gutters)/textW*cap:cap));
   chart.style.setProperty('--seat-font',size.toFixed(2)+'px');
+  // 记下“每个座位能放多少 px 文字”，渲染座位时据此决定显示全名还是缩写
+  chart.dataset.seatFit=Math.round(textW);
+  return {font:measureFont(size,cs.fontFamily),budget:textW};
+}
+// 取座位表的可用宽度：优先量容器的内层宽度，避免量到“已经被压缩过的”滚动容器本身
+function seatAvailWidth(chart){
+  const parent=chart.parentElement;
+  if(parent){
+    const pc=getComputedStyle(parent);
+    const inner=parent.clientWidth-(parseFloat(pc.paddingLeft)||0)-(parseFloat(pc.paddingRight)||0)-(parseFloat(pc.borderLeftWidth)||0)-(parseFloat(pc.borderRightWidth)||0);
+    if(inner>0)return inner;
+  }
+  return chart.clientWidth||0;
+}
+// 上一次量到的“字号 + 每个座位能放多少 px”：只放内存，不写进 layout（避免污染存档 JSON）
+const seatFitCtx={roll:null,ed:null};
+function seatFitCtxFor(which){return which==='ed'?seatFitCtx.ed:seatFitCtx.roll;}
+function setSeatFitCtx(which,ctx){
+  if(ctx)seatFitCtx[which==='ed'?'ed':'roll']=ctx;
+  return ctx;
 }
 function fitSeatNames(){
+  const out={roll:null,ed:null};
   const roll=$('#view-rollcall .seat-chart');
-  if(roll&&state.seatLayout)fitChartNames(roll,state.seatLayout,11);
+  if(roll&&state.seatLayout){out.roll=setSeatFitCtx('roll',fitChartNames(roll,state.seatLayout,11,3));observeSeatChart(roll,roll.parentElement||roll);}
   const ed=$('#seatModal .seat-chart');
-  if(ed&&seatEditor)fitChartNames(ed,seatEditor.layout,12);
+  if(ed&&seatEditor){out.ed=setSeatFitCtx('ed',fitChartNames(ed,seatEditor.layout,11,3));observeSeatChart(ed,ed.parentElement||ed);}
+  return out;
 }
-window.addEventListener('resize',()=>{fitSeatNames();});
+// 每个座位按“当前字号下能放多少 px”重写显示文本；返回是否有座位被缩写
+function applySeatFit(chart,layout,ctx){
+  if(!chart||!layout)return false;
+  const seats=chart.querySelectorAll('.seat');
+  let anyTrunc=false;
+  seats.forEach(el=>{
+    const seat=layout.seats.find(s=>s.id===el.dataset.eseat||s.id===el.dataset.seat);
+    if(!seat)return;
+    const shown=seatTextForSeat(chart,layout,seat,ctx);
+    if(shown.trunc)anyTrunc=true;
+    if(el.textContent!==shown.text)el.textContent=shown.text;
+    el.classList.toggle('seat-trunc',shown.trunc);
+  });
+  return anyTrunc;
+}
+// 先按布局量字号，再按这个字号回填每个座位的显示文本（缩写在这里发生）
+function refitSeats(){
+  const ctx=fitSeatNames();
+  const roll=$('#view-rollcall .seat-chart');
+  if(roll&&state.seatLayout)applySeatFit(roll,state.seatLayout,ctx.roll);
+  const ed=$('#seatModal .seat-chart');
+  if(ed&&seatEditor)applySeatFit(ed,seatEditor.layout,ctx.ed);
+}
+// 尺寸一变（转屏、切分屏、键盘收起）立刻重算，不靠一次性测量
+let seatResizeObserver=null;
+const seatObservedTargets=new WeakSet();
+const seatLastWidth=new WeakMap();
+function observeSeatChart(chart,target){
+  if(typeof ResizeObserver==='undefined'||!target)return;
+  if(seatObservedTargets.has(target))return;
+  seatObservedTargets.add(target);
+  try{
+    if(!seatResizeObserver)seatResizeObserver=new ResizeObserver(entries=>{
+      let dirty=false;
+      entries.forEach(e=>{
+        const w=e.contentRect?e.contentRect.width:0;
+        if(Math.abs((seatLastWidth.get(e.target)||0)-w)>1){seatLastWidth.set(e.target,w);dirty=true;}
+      });
+      if(dirty)refitSeats();
+    });
+    seatResizeObserver.observe(target);
+    seatLastWidth.set(target,target.clientWidth||0);
+  }catch(err){}
+}
+let seatFitPending=false;
+function scheduleSeatFit(){
+  if(seatFitPending)return;
+  seatFitPending=true;
+  requestAnimationFrame(()=>{seatFitPending=false;refitSeats();});
+}
+window.addEventListener('resize',scheduleSeatFit);
+window.addEventListener('orientationchange',()=>{setTimeout(refitSeats,120);});
 
 // 组间用独立轨道画竖线：a|a|分隔|b|b|分隔|…
 function seatGridTemplate(cols,groupSize){
@@ -177,7 +344,8 @@ function seatPodiumSpan(cols,groupSize,hasSides){
 }
 
 // ---------- 编辑座位（大弹窗；打开期间页面滑动手势失效） ----------
-let seatEditor=null;   // { layout, selectedSeatId, selectedPoolId, dragging }
+// 草稿模式：弹窗里所有改动只落在 seatEditor.layout 上，点“确认修改”才写回首页与数据库
+let seatEditor=null;   // { layout, selectedSeatId, selectedPoolId, base, history, dirty }
 function copyLayout(layout){return JSON.parse(JSON.stringify(layout));}
 function poolStudents(layout){
   const seated=new Set(layout.seats.filter(s=>s.studentId).map(s=>s.studentId));
@@ -208,24 +376,25 @@ function applySeatLayoutOptions(layout,opts){
   syncSeatGroups(layout);
   return layout;
 }
-function seatEditorCellHtml(seat,extraStyle,extraClass){
+function seatEditorCellHtml(seat,extraStyle,extraClass,ctx){
   const stu=seat.studentId?state.students.find(s=>s.id===seat.studentId):null;
   const classes=['seat','seat-'+seat.kind];
   if(extraClass)classes.push(extraClass);
   if(!stu)classes.push('seat-vacant');
   if(seatEditor&&seatEditor.selectedSeatId===seat.id)classes.push('seat-sel');
-  const text=stu?(stu.displayName||stu.name):(seat.kind==='side'?(seat.label||'讲台旁'):'');
+  const shown=seatTextForSeat(document.getElementById('seatChartEditor'),seatEditor?seatEditor.layout:null,seat,ctx||seatFitCtxFor('ed'));
+  if(shown.trunc)classes.push('seat-trunc');
   const title=stu?stu.name+'（'+seatLabel(seat)+'）':seatLabel(seat)+'（空位）';
   const style=extraStyle?' style="'+extraStyle+'"':'';
-  return '<button type="button" class="'+classes.join(' ')+'" data-eseat="'+esc(seat.id)+'" title="'+esc(title)+'"'+style+'>'+esc(text)+'</button>';
+  return '<button type="button" class="'+classes.join(' ')+'" data-eseat="'+esc(seat.id)+'" title="'+esc(shown.trunc?title+'（座位太小，已简称）':title)+'"'+style+'>'+esc(shown.text)+'</button>';
 }
-function seatEditorChartHtml(layout){
+function seatEditorChartHtml(layout,ctx){
   const hasSides=layout.sideSeats!==false;
   // 关闭“讲台两侧”时不画任何占位，否则空占位仍会占住两侧的网格列
   const side=(id,col)=>{
     if(!hasSides)return '';
     const s=layout.seats.find(x=>x.id===id);
-    return s?seatEditorCellHtml(s,'grid-column:'+col):'<span class="seat seat-vacant seat-side" style="grid-column:'+col+'"></span>';
+    return s?seatEditorCellHtml(s,'grid-column:'+col,'',ctx):'<span class="seat seat-vacant seat-side" style="grid-column:'+col+'"></span>';
   };
   let rows='';
   const groupSize=Number(layout.groupSize)||2;
@@ -235,11 +404,11 @@ function seatEditorChartHtml(layout){
     let cells='';
     for(let col=1;col<=layout.cols;col++){
       if(col>1&&(col-1)%groupSize===0)cells+='<span class="seat-sep" aria-hidden="true"></span>';
-      cells+=seatEditorCellHtml(layout.seats.find(s=>s.kind==='normal'&&s.row===row&&s.col===col));
+      cells+=seatEditorCellHtml(layout.seats.find(s=>s.kind==='normal'&&s.row===row&&s.col===col),'','',ctx);
     }
     rows+='<div class="seat-row" style="grid-template-columns:'+template+'">'+cells+'</div>';
   }
-  return '<div class="seat-chart" style="--seat-cols:'+layout.cols+'">'
+  return '<div class="seat-chart" id="seatChartEditor" style="--seat-cols:'+layout.cols+'">'
     +rows
     +'<div class="seat-podium-row" style="grid-template-columns:'+template+'">'+side('sideL',1)
     +'<div class="seat-podium" style="grid-column:'+span+'">讲　台</div>'
@@ -249,14 +418,15 @@ function seatEditorChartHtml(layout){
 async function openSeatEditor(){
   await loadSeatLayout();
   if(!state.seatLayout){toast('当前班级还没有座位表');return;}
-  seatEditor={layout:copyLayout(state.seatLayout),selectedSeatId:'',selectedPoolId:'',dragging:null,history:[]};
+  const base=copyLayout(state.seatLayout);
+  seatEditor={layout:base,base:base,selectedSeatId:'',selectedPoolId:'',history:[],dirty:false};
   document.body.classList.add('modal-open');
   renderSeatEditor();
 }
-// 编辑弹窗内的一切改动都即时保存；撤销靠历史快照栈
+// 有改动 → 记一次快照（撤销用），并标记为“待确认”；真正的保存发生在点“确认修改”时
 function commitSeatEditor(){
   if(!seatEditor)return;
-  saveSeatLayout(seatEditor.layout);   // 同步 state.seatLayout 并写入本机数据库
+  seatEditor.dirty=true;
 }
 function recordSeatSnapshot(snapshot){
   if(!seatEditor||!snapshot)return;
@@ -268,15 +438,61 @@ function undoSeatEditor(){
   if(!seatEditor||!seatEditor.history.length){toast('没有可撤销的操作');return;}
   seatEditor.layout=seatEditor.history.pop();
   seatEditor.selectedSeatId='';seatEditor.selectedPoolId='';
-  commitSeatEditor();
+  // 一路撤到底就是没改过，关窗时不必再问
+  seatEditor.dirty=seatEditor.history.length>0;
   renderSeatEditor();
-  toast('已撤销上一步');
+  toast(seatEditor.history.length?'已撤销上一步':'已回到打开时的状态');
 }
+// 点击 × / 点“保存”：有改动才弹确认框（返回编辑 / 放弃修改 / 确认修改）
 function closeSeatEditor(){
+  if(!seatEditor)return;
+  if(!seatEditor.dirty){discardSeatEditor();return;}
+  openSeatCloseDialog();
+}
+function saveSeatEditor(){
+  if(!seatEditor)return;
+  seatEditor.dirty=false;
+  const layout=seatEditor.layout;
+  discardSeatEditor();
+  saveSeatLayout(layout)   // 同步 state.seatLayout 并写入本机数据库（失败时它自己会提示）
+    .then(()=>toast('座位表已保存'))
+    .catch(()=>{});
+}
+function discardSeatEditor(){
   document.body.classList.remove('modal-open');
+  $('#seatCloseModal')?.remove();
   const m=$('#seatModal');if(m)m.remove();
   seatEditor=null;
+  setSeatFitCtx('ed',null);   // 弹窗关了，缓存的编辑器量宽结果作废
   renderRollcall();
+}
+function openSeatCloseDialog(){
+  const old=$('#seatCloseModal');
+  if(old)old.remove();
+  const dialog=document.createElement('div');
+  dialog.id='seatCloseModal';
+  dialog.className='modal-backdrop seat-close-backdrop';
+  dialog.innerHTML='<div class="modal-card seat-close-card" role="dialog" aria-modal="true">'
+    +'<button type="button" class="seat-close-x" aria-label="返回编辑">×</button>'
+    +'<h3>座位表还没保存</h3>'
+    +'<div class="seat-close-actions">'
+    +'<button type="button" class="secondary" id="seatAbandonBtn"><strong>放弃修改</strong><small>丢弃这次的所有改动，座位表保持打开前的样子</small></button>'
+    +'<button type="button" class="primary" id="seatSaveBtn"><strong>确认修改</strong><small>保存这次改动到本机，首页座位表和点名立刻按新安排生效</small></button>'
+    +'</div>'
+    +'<button type="button" class="seat-close-back" id="seatBackBtn">返回编辑（继续调整）</button>'
+    +'</div>';
+  document.body.appendChild(dialog);
+  const back=()=>dialog.remove();
+  dialog.querySelector('.seat-close-x').onclick=back;
+  $('#seatBackBtn').onclick=back;
+  $('#seatAbandonBtn').onclick=()=>discardSeatEditor();
+  $('#seatSaveBtn').onclick=()=>saveSeatEditor();
+  document.addEventListener('keydown',seatCloseDialogKeys);
+}
+function seatCloseDialogKeys(e){
+  if(e.key!=='Escape')return;
+  document.removeEventListener('keydown',seatCloseDialogKeys);
+  $('#seatCloseModal')?.remove();
 }
 
 function renderSeatEditor(){
@@ -286,7 +502,15 @@ function renderSeatEditor(){
   if(!modal){modal=document.createElement('div');modal.id='seatModal';modal.className='modal-backdrop seat-modal';document.body.appendChild(modal);}
   const poolHtml=pool.length
     ?pool.map(s=>'<button type="button" class="seat-chip'+(seatEditor.selectedPoolId===s.id?' is-selected':'')+'" data-epool="'+esc(s.id)+'">'+esc(s.displayName||s.name)+'</button>').join('')
-    :'<span class="hint">全部学生都已安排座位</span>';
+    :'';
+  // 未安排区永远留一条“可落座”的空位：点中座位再点这里，就把学生从座位收回未安排
+  const pickedSeat=seatEditor.selectedSeatId?seatEditor.layout.seats.find(s=>s.id===seatEditor.selectedSeatId):null;
+  const pickedStu=pickedSeat&&pickedSeat.studentId?studentOfSeat(pickedSeat):null;
+  const holderText=pickedStu?'点这里把 '+(pickedStu.displayName||pickedStu.name)+' 收回未安排':'先把座位上的学生收回到这里';
+  const emptyHolder='<span class="seat-pool-drop'+(pickedSeat?' is-target':'')+'" id="seatPoolDrop">'+esc(holderText)+'</span>';
+  const poolList=pool.length
+    ?poolHtml+emptyHolder
+    :emptyHolder;   // 没有未安排学生时，这一条就是“腾空座位”的落点
   modal.innerHTML='<div class="modal-card seat-editor" role="dialog" aria-modal="true">'
     +'<div class="modal-header"><h2>编辑座位 · '+esc(state.currentClass)+'</h2><button class="icon-button modal-close" aria-label="关闭">×</button></div>'
     +'<div class="seat-editor-bar">'
@@ -301,22 +525,26 @@ function renderSeatEditor(){
     +'<button class="secondary" id="seatUndoBtn"'+(seatEditor.history&&seatEditor.history.length?'':' disabled')+'>撤销</button>'
     +'</div>'
     +'<div class="seat-editor-body">'
-    +'<div class="seat-editor-grid">'+seatEditorChartHtml(layout)+'</div>'
+    +'<div class="seat-editor-grid">'+seatEditorChartHtml(layout,seatFitCtxFor('ed'))+'</div>'
     +'<div class="seat-editor-pool">'
     +'<div class="seat-pool-head"><h3>未安排 <span class="badge">'+pool.length+'人</span></h3>'
-    +'<button class="secondary" id="seatFillBtn">按名册填充</button></div>'
-    +'<div class="seat-pool-list">'+poolHtml+'</div>'
-    +'<p class="hint">点一个位置再点另一个位置可对调；点学生再点位置可落座；长按拖动同样可以对调，拖到本区域即腾空座位。</p>'
+    +'<span class="seat-pool-buttons">'
+    +'<button class="secondary" id="seatClearBtn">清空座位</button>'
+    +'<button class="secondary" id="seatFillBtn">按名册填充</button>'
+    +'</span></div>'
+    +'<div class="seat-pool-list">'+poolList+'</div>'
+    +'<p class="hint">点一个座位再点另一个座位：两人对调；点座位再点这里：把学生收回“未安排”；点学生的名字再点座位：直接落座。改动会在点“×”后确认保存。</p>'
     +'</div></div></div>';
   bindSeatEditor();
-  fitSeatNames();
-  requestAnimationFrame(fitSeatNames);
+  refitSeats();
+  requestAnimationFrame(refitSeats);
 }
 function bindSeatEditor(){
   const modal=$('#seatModal');
   modal.querySelector('.modal-close').onclick=closeSeatEditor;
   $('#seatUndoBtn').onclick=undoSeatEditor;
   $('#seatFillBtn').onclick=()=>{pushSeatHistory();fillSeatsByName(seatEditor.layout,seatClassStudents());commitSeatEditor();renderSeatEditor();toast('已按名册填充座位');};
+  $('#seatClearBtn').onclick=clearEditorSeats;
   $('#seatRotateBtn').onclick=rotateEditorGroups;
   $('#seatImportBtn').onclick=openSeatImport;
   $('#seatExportBtn').onclick=exportSeatXlsx;
@@ -341,118 +569,70 @@ function bindSeatEditor(){
     renderSeatEditor();
   };
   $('#seatRotateInput').onchange=()=>{pushSeatHistory();seatEditor.layout.rotate=$('#seatRotateInput').value;commitSeatEditor();renderSeatEditor();};
+  // 只保留点击换位：座位 → 座位 对调；座位 → 未安排 收回；未安排 → 座位 落座
   $$('#seatModal [data-eseat]').forEach(b=>{
     b.onclick=()=>seatEditorTapSeat(b.dataset.eseat);
-    b.onpointerdown=e=>beginSeatDrag(e,b.dataset.eseat,'seat');
   });
   $$('#seatModal [data-epool]').forEach(b=>{
     b.onclick=()=>seatEditorTapPool(b.dataset.epool);
-    b.onpointerdown=e=>beginSeatDrag(e,b.dataset.epool,'pool');
   });
+  const drop=$('#seatPoolDrop');
+  if(drop)drop.onclick=()=>seatEditorTapPool('');
+}
+// 一键清空：只清座位上的学生，列/排/分组等版式保留（可撤销）
+function clearEditorSeats(){
+  const st=seatEditor;if(!st)return;
+  const seated=st.layout.seats.filter(s=>s.studentId).length;
+  if(!seated){toast('现在没有已安排的座位');return;}
+  if(!confirm('把 '+seated+' 个已安排的学生全部收回“未安排”？\n座位版式（列、排、分组）会保留，可用“撤销”恢复。'))return;
+  pushSeatHistory();
+  st.layout.seats.forEach(s=>{s.studentId=null;});
+  st.selectedSeatId='';st.selectedPoolId='';
+  commitSeatEditor();
+  renderSeatEditor();
+  toast('已清空座位，学生都回到“未安排”');
 }
 function seatEditorTapSeat(seatId){
   const st=seatEditor;if(!st)return;
   const seat=st.layout.seats.find(s=>s.id===seatId);if(!seat)return;
-  if(st.selectedPoolId){pushSeatHistory();seat.studentId=st.selectedPoolId;st.selectedPoolId='';st.selectedSeatId='';commitSeatEditor();renderSeatEditor();return;}
+  // 手上拿着“未安排”里的学生 → 直接落座
+  if(st.selectedPoolId){
+    pushSeatHistory();
+    seat.studentId=st.selectedPoolId;
+    st.selectedPoolId='';st.selectedSeatId='';
+    commitSeatEditor();renderSeatEditor();
+    return;
+  }
   if(!st.selectedSeatId){st.selectedSeatId=seatId;renderSeatEditor();return;}
   if(st.selectedSeatId===seatId){st.selectedSeatId='';renderSeatEditor();return;}
+  // 已选中一个座位 → 两个座位上的学生互换（其中一个可以是空位，等于把学生挪过去）
   const from=st.layout.seats.find(s=>s.id===st.selectedSeatId);
   if(from){pushSeatHistory();const tmp=from.studentId;from.studentId=seat.studentId;seat.studentId=tmp;commitSeatEditor();}
   st.selectedSeatId='';renderSeatEditor();
 }
+// 点未安排区：手上有座位就把这个座位腾空；否则选中/取消这个学生
 function seatEditorTapPool(studentId){
   const st=seatEditor;if(!st)return;
+  if(!studentId){
+    if(st.selectedSeatId){
+      const seat=st.layout.seats.find(s=>s.id===st.selectedSeatId);
+      if(seat&&seat.studentId){
+        pushSeatHistory();
+        seat.studentId=null;
+        commitSeatEditor();
+        toast('已把该学生收回“未安排”');
+      }
+    }
+    st.selectedSeatId='';st.selectedPoolId='';
+    renderSeatEditor();
+    return;
+  }
   st.selectedPoolId=st.selectedPoolId===studentId?'':studentId;
   st.selectedSeatId='';
   renderSeatEditor();
 }
 
-// 长按拖动：拖动期间跟手，落到座位/未安排区即完成对调或腾空
-function beginSeatDrag(event,id,type){
-  if(!seatEditor)return;
-  if(event.button&&event.button!==0)return;
-  const startX=event.clientX,startY=event.clientY;
-  let armed=false;
-  const seatOfId=()=>seatEditor.layout.seats.find(x=>x.id===id);
-  const nameOfDrag=()=>{
-    if(type==='seat'){const seat=seatOfId();const stu=seat&&seat.studentId?state.students.find(s=>s.id===seat.studentId):null;return stu?stu.name:(seat&&seat.kind==='side'?(seat.label||'讲台旁'):'空位');}
-    const stu=state.students.find(s=>s.id===id);return stu?stu.name:'';
-  };
-  const timer=setTimeout(()=>{
-    armed=true;
-    const ghost=document.createElement('div');
-    ghost.className='seat-drag-ghost';
-    ghost.textContent=nameOfDrag();
-    document.body.appendChild(ghost);
-    seatEditor.dragging={id:id,type:type,ghost:ghost};
-    moveSeatGhost(event.clientX,event.clientY);
-  },200);
-  const move=e=>{
-    if(!armed){
-      if(Math.abs(e.clientX-startX)>8||Math.abs(e.clientY-startY)>8){clearTimeout(timer);cleanup();}
-      return;
-    }
-    moveSeatGhost(e.clientX,e.clientY);
-    highlightSeatDropTarget(e.clientX,e.clientY);
-  };
-  const up=e=>{
-    clearTimeout(timer);
-    if(armed)dropSeatDrag(e.clientX,e.clientY);
-    cleanup();
-  };
-  const cleanup=()=>{
-    window.removeEventListener('pointermove',move);
-    window.removeEventListener('pointerup',up);
-    window.removeEventListener('pointercancel',up);
-  };
-  window.addEventListener('pointermove',move);
-  window.addEventListener('pointerup',up);
-  window.addEventListener('pointercancel',up);
-}
-function moveSeatGhost(x,y){
-  const g=seatEditor&&seatEditor.dragging&&seatEditor.dragging.ghost;
-  if(!g)return;
-  g.style.left=x+'px';
-  g.style.top=y+'px';
-}
-function highlightSeatDropTarget(x,y){
-  $$('#seatModal .drop-active').forEach(el=>el.classList.remove('drop-active'));
-  const el=document.elementFromPoint(x,y);
-  const target=el&&el.closest?el.closest('[data-eseat],.seat-editor-pool'):null;
-  if(target)target.classList.add('drop-active');
-}
-function dropSeatDrag(x,y){
-  const st=seatEditor;
-  if(!st||!st.dragging)return;
-  const drag=st.dragging;
-  st.dragging=null;
-  const el=document.elementFromPoint(x,y);
-  const seatEl=el&&el.closest?el.closest('[data-eseat]'):null;
-  const poolEl=el&&el.closest?el.closest('.seat-editor-pool'):null;
-  if(drag.ghost)drag.ghost.remove();
-  $$('#seatModal .drop-active').forEach(n=>n.classList.remove('drop-active'));
-  const before=copyLayout(st.layout);
-  let changed=false;
-  if(seatEl){
-    const targetSeat=st.layout.seats.find(s=>s.id===seatEl.dataset.eseat);
-    if(targetSeat){
-      if(drag.type==='seat'){
-        const fromSeat=st.layout.seats.find(s=>s.id===drag.id);
-        if(fromSeat&&fromSeat!==targetSeat){const tmp=fromSeat.studentId;fromSeat.studentId=targetSeat.studentId;targetSeat.studentId=tmp;changed=true;}
-      }else{
-        const seat=st.layout.seats.find(s=>s.studentId===drag.id);
-        if(seat)seat.studentId=null;
-        targetSeat.studentId=drag.id;changed=true;
-      }
-    }
-  }else if(poolEl&&drag.type==='seat'){
-    const fromSeat=st.layout.seats.find(s=>s.id===drag.id);
-    if(fromSeat){fromSeat.studentId=null;changed=true;}
-  }
-  if(changed){recordSeatSnapshot(before);commitSeatEditor();}
-  renderSeatEditor();
-}
-
+// 长按拖拽换位已移除：只保留点击对调 / 落座 / 收回（避免手机上误触与滑动冲突）
 // ---------- 手动大组轮换 ----------
 function movableGroups(layout){
   const groups=new Map();
@@ -525,9 +705,10 @@ function seatColorFor(student,stats,mode){
   return `hsl(${Math.round(120*t)},62%,74%)`;   // 0°红 → 120°绿
 }
 // ---------- 导入 / 导出座位表 ----------
-function seatImportView(){return state.seatImportView==='normal'?'normal':'teacher';}
+function seatImportView(){return ['normal','flip','auto'].includes(state.seatImportView)?state.seatImportView:'auto';}
+// 粘贴文本按行拆格：保留空单元格，否则矩阵里的空列会被吃掉
 function parseSeatTableText(text){
-  return String(text||'').split(/\r?\n/).filter(line=>line.trim()!=='').map(line=>line.split(/\t|,|，|\|/).map(v=>v.trim()));
+  return String(text||'').split(/\r?\n/).filter(line=>line.trim()!=='').map(line=>line.split(/\t|\||,|，/).map(v=>v.trim()));
 }
 function isSeatListFormat(rows){
   const head=(rows[0]||[]).map(v=>String(v));
@@ -543,42 +724,184 @@ function seatMarker(text){
   return null;
 }
 function stripSideLabel(text){return String(text||'').replace(/^(讲台左|台左|左讲台|讲台右|台右|右讲台)[:：]?/,'').trim();}
-// 把矩阵/清单整理成 {cols,rows,grid,sideL,sideR}（教师视角：Excel 最后一行＝第1排）
-function normalizeSeatRows(rows,view){
-  let list=[];
-  if(isSeatListFormat(rows)){
-    const head=rows[0].map(v=>String(v));
-    const idxOf=re=>head.findIndex(v=>re.test(v));
-    const iCol=idxOf(/列/),iRow=idxOf(/排/),iName=idxOf(/姓名|学生/),iSeat=idxOf(/座位/);
-    let maxCol=0,maxRow=0,entries=[];
-    rows.slice(1).forEach(r=>{
-      const marker=seatMarker(r[iSeat]||r[iCol]);
-      const name=String(r[iName]||'').trim();
-      if(marker&&marker.side){entries.push({side:marker.side,name:name||stripSideLabel(r[iSeat]||r[iCol])});return;}
-      const col=Number(String(r[iCol]||'').replace(/[^0-9]/g,'')),row=Number(String(r[iRow]||'').replace(/[^0-9]/g,''));
-      if(!col||!row)return;
-      maxCol=Math.max(maxCol,col);maxRow=Math.max(maxRow,row);
-      entries.push({col,row,name});
-    });
-    const grid=Array.from({length:maxRow},()=>Array.from({length:maxCol},()=>''));
-    entries.forEach(e=>{if(e.col&&e.row)grid[e.row-1][e.col-1]=e.name;});
-    const sideL=entries.find(e=>e.side==='sideL'),sideR=entries.find(e=>e.side==='sideR');
-    return {cols:maxCol,rows:maxRow,grid,sideL:sideL?sideL.name:null,sideR:sideR?sideR.name:null};
-  }
-  let sideL=null,sideR=null;
-  const body=[];
-  rows.forEach(line=>{
-    const markers=line.map(seatMarker);
-    if(markers.some(m=>m&&(m.side||m.podium))){
-      line.forEach((cell,i)=>{const m=markers[i];if(!m)return;if(m.side==='sideL')sideL=stripSideLabel(cell)||null;if(m.side==='sideR')sideR=stripSideLabel(cell)||null;});
-      return;
-    }
-    body.push(line.map(cell=>String(cell||'').trim()));
+
+// ---------- 座位表内容识别 ----------
+// 一列里能对上班内名单的姓名 ≤ 这个数（即只有 2 人及以下），就按“这一组人不齐/不是座位列”处理
+const SEAT_COL_MIN_NAMES=3;
+// 表格里常见“不是学生姓名”的单元格：讲台、黑板、门、窗、过道、组别名……
+const SEAT_LABEL_RE=/(讲台|黑板|白板|屏幕|投影|门|窗|窗户|过道|走廊|通道|楼梯|饮水机|空调|卫生角|图书角|储物柜|多媒体|第一组|第二组|第三组|第四组|第五组|第六组|第七组|第八组|第九组|第十组|第1组|第2组|第3组|第4组|第5组|第6组|第7组|第8组|一组|二组|三组|四组|五组|六组|七组|八组|1组|2组|3组|4组|5组|6组|7组|8组|[一二三四五六七八九十0-9]+\s*大组)/;
+function isSeatLabelCell(text){
+  const t=String(text||'').trim();
+  if(!t||seatMarker(t))return false;   // 空 / 讲台左右标签交给 seatMarker 处理
+  return SEAT_LABEL_RE.test(t);
+}
+// 行尾空白补齐，保证每一行等宽（xlsx 里空单元格根本不占位，不补齐会量错列）
+function padSeatRows(rows){
+  const width=Math.max(1,...(rows||[]).map(r=>Array.isArray(r)?r.length:0));
+  return (rows||[]).map(r=>{
+    const line=Array.isArray(r)?r.slice():[];
+    while(line.length<width)line.push('');
+    return line.map(v=>String(v==null?'':v).trim());
   });
-  if(view!=='normal')body.reverse();
-  const rowsCount=Math.max(1,Math.min(12,body.length)),cols=Math.max(1,Math.min(12,Math.max(...body.map(l=>l.length),1)));
-  const grid=Array.from({length:rowsCount},(_,r)=>Array.from({length:cols},(_,c)=>(body[r]&&body[r][c])||''));
-  return {cols,rows:rowsCount,grid,sideL,sideR};
+}
+function countSeatNames(grid){
+  const roster=new Set(seatClassStudents().map(s=>String(s.displayName||s.name||'')));
+  return grid.flat().filter(c=>c&&roster.has(c)).length;
+}
+// 去掉首尾整行空白（Excel 常在数据后面留一串空行，会让“最后一行”判断落空）
+function trimEmptyEdges(grid){
+  const isEmptyRow=row=>!row||!row.some(c=>c);
+  let first=0,last=grid.length-1;
+  while(first<=last&&isEmptyRow(grid[first]))first++;
+  while(last>=first&&isEmptyRow(grid[last]))last--;
+  return first<=last?grid.slice(first,last+1):grid;
+}
+function analyzeSeatGrid(grid){
+  grid=trimEmptyEdges(grid);
+  const height=grid.length,width=height?grid[0].length:0;
+  const roster=seatClassStudents();
+  const byName=new Map();
+  roster.forEach(s=>{byName.set(String(s.name||''),s);byName.set(String(s.displayName||''),s);});
+  const notes=[];
+  const note=(msg,kind)=>{notes.push({msg,kind});};
+  // —— 第 1 步：判断表格方向：让“第 1 排”落在屏幕最下面（贴近讲台）
+  // 判据 = 讲台位置标记在哪一行：组别名（第一组…）就代表讲台那一侧。
+  //   讲台/组别名在【第一行】⇒ Excel 第一行是第 1 排 ⇒ 保持原方向；
+  //   讲台/组别名在【最后一行】⇒ 最后一行才是第 1 排 ⇒ 需要上下镜像。
+  // 修正一律只用【上下镜像】（行倒过来），绝不镜像列，否则左右会反。
+  const podiumTop=podiumFromTop(grid,byName),podiumBottom=podiumFromBottom(grid,byName);
+  const groupTop=groupLabelFromTop(grid),groupBottom=groupLabelFromBottom(grid);
+  const option=seatImportView();
+  let flipRows=(option==='flip');
+  if(option==='auto')flipRows=!(podiumTop&&!podiumBottom);   // 只有“讲台标在第一行”时才保持原方向
+  let sideL=null,sideR=null;
+  if(flipRows){
+    grid=grid.slice().reverse();   // 只上下镜像：行倒过来，列序保持（列不能再镜像，否则左右会反）
+    const why=podiumBottom?'讲台/黑板标在表格最后一行（视为第 1 排）'
+      :podiumTop?'讲台/黑板标在表格第一行'
+      :(groupBottom?'表格没写讲台，但组别名在最后一行，按讲台同侧处理'
+      :(groupTop?'表格没写讲台，但组别名在第一行':'没发现讲台/组别标记，按常见写法处理'));
+    note('表格方向：'+why+'，因此把各排上下对调，让第 1 排落在屏幕最下方（贴近讲台）。若方向仍不对，在导入窗口切换“表格方向”重导即可','info');
+  }else{
+    note('表格方向：讲台/黑板标在表格第一行，Excel 第一行就是第 1 排，无需上下对调','info');
+  }
+  sideL=findSideSeat(grid,'sideL');sideR=findSideSeat(grid,'sideR');
+  if(flipRows&&(sideL||sideR)){const t=sideL;sideL=sideR;sideR=t;}   // 上下对调后（等效于把纸立起来看），讲台左右也跟着换边
+  // —— 第 2 步：逐列判断“是不是真正的座位列”（拿班内名单核对）
+  const cols=Array.from({length:width},(_,c)=>{
+    const values=grid.map(row=>row[c]);
+    const named=values.filter(v=>v&&byName.has(v));
+    return {
+      index:c,
+      names:named.length,
+      empty:!values.some(Boolean),
+      label:values.find(v=>v&&isSeatLabelCell(v))||'',
+      sample:values.filter(Boolean).slice(0,3)
+    };
+  });
+  // 名单命中 ≥SEAT_COL_MIN_NAMES 人 → 座位列；整列空白 → 大组之间的空列；其余 → 组别/方位标记列、或人不齐
+  const kept=cols.filter(x=>x.names>=SEAT_COL_MIN_NAMES).map(x=>x.index);
+  let dropped=cols.filter(x=>x.names<SEAT_COL_MIN_NAMES);
+  // 保底：如果这么一砍就没剩几列，说明名单没对上（而不是表格有问题），宁可整表保留
+  if(!kept.length||kept.length<Math.max(2,Math.ceil(width*0.3))){
+    notes.push({msg:'有 '+dropped.length+' 列对不上班内名单，为避免误删已保留整张表（'+width+' 列）。请先确认这个班的名单已导入，或在导入窗口里改“表格方向”后重试',kind:'info'});
+    return {flipRows,cols:width,rows:height,grid,sideL,sideR,matched:countSeatNames(grid),keptCols:width,dropped:[],notes};
+  }
+  const empties=dropped.filter(x=>x.empty);
+  if(empties.length)note('忽略 '+empties.length+' 个整列空白的列（大组之间的空列不再算作一整组）','empty');
+  dropped.filter(x=>x.label).forEach(x=>{
+    note('“'+x.label+'”这一列是组别/方位标记列，不作为座位'+(x.names?'，该列还有 '+x.names+' 个能对上班内名单的姓名，会回到“未安排”':''),'group');
+  });
+  dropped.filter(x=>!x.empty&&!x.label).forEach(x=>{
+    note('忽略第 '+(x.index+1)+' 列：整列只有 '+x.names+' 人能对上班内名单，按“一组不足 '+SEAT_COL_MIN_NAMES+' 人”处理'+(x.sample.length?'（该列内容：'+x.sample.join('、')+'）':''),'sparse');
+  });
+  // 姓名落进了“不成组的列”（组间空列、分隔列、标记列）：不是简单丢弃，而是告诉老师这一行对不齐
+  const strayNames=[];
+  dropped.forEach(x=>{
+    grid.forEach((row,r)=>{
+      const v=row[x.index];
+      if(v&&byName.has(v)&&!strayNames.some(s=>s.name===v&&s.row===r)){
+        strayNames.push({name:v,row:r,col:x.index,empty:x.empty});
+      }
+    });
+  });
+  const droppedIndexes=dropped.map(x=>x.index);
+  let finalGrid=grid.map(row=>kept.map(c=>row[c]));
+  // 只作为“门/窗/组别”存在的边界行不算排：去掉首尾没有座位姓名的行
+  const isSeatRow=row=>row.some(c=>c&&byName.has(c));
+  let first=0,last=finalGrid.length-1;
+  while(first<=last&&!isSeatRow(finalGrid[first]))first++;
+  while(last>=first&&!isSeatRow(finalGrid[last]))last--;
+  const trimmed=first<=last?finalGrid.slice(first,last+1):finalGrid;
+  const matched=countSeatNames(trimmed)-strayNames.length;
+  strayNames.forEach(s=>{
+    note('“'+s.name+'”在原表第 '+(s.row+1)+' 行、第 '+(s.col+1)+' 列——这是'+(s.empty?'大组之间的分隔列':'一个不成组的列')+'，说明这一行与其他行对不齐（多半是多写或漏写了一格）。已保持空位，请导入后在“编辑座位”里把它放到正确位置','sparse');
+  });
+  note('识别结果：'+kept.length+' 列 × '+trimmed.length+' 排，与班内名单核对上 '+matched+' 人'+(strayNames.length?'（另有 '+strayNames.length+' 人位置对不齐，见上）':''),'info');
+  return {flipRows,cols:kept.length,rows:trimmed.length,grid:trimmed,sideL,sideR,matched,keptCols:kept.length,dropped:droppedIndexes,strayNames,notes};
+}
+// 这一行是不是“组别名行”（第一组/第二组…）：排除讲台左右标签那种带姓名的写法
+function isGroupLabelRow(row){
+  if(!row||!row.length)return false;
+  const cells=row.filter(Boolean);
+  if(!cells.length)return false;
+  return cells.some(c=>/组/.test(c)&&isSeatLabelCell(c));
+}
+// 组别名写在表格最上面一行 ⇒ 讲台也在上方 ⇒ 需要整表旋转
+function groupLabelFromTop(grid){
+  return isGroupLabelRow(grid[0]||[]);
+}
+// 组别名写在表格最下面一行 ⇒ 讲台也在下方 ⇒ 不需要旋转
+function groupLabelFromBottom(grid){
+  return isGroupLabelRow(grid[grid.length-1]||[]);
+}
+// 这一行是不是“讲台行”：含讲台/黑板，且整行没有学生姓名（讲台格常和组别名、门等同处一行，不能要求它独占一行）
+function isPodiumRow(row,byName){
+  if(!row||!row.some(c=>{const m=seatMarker(c);return m&&m.podium;}))return false;
+  if(byName)return !row.some(c=>c&&byName.has(c));
+  return row.filter(Boolean).length<=1;
+}
+// 讲台/黑板标在表格最上面一行 ⇒ Excel 第一行就是第 1 排，不需要上下对调
+function podiumFromTop(grid,byName){return isPodiumRow(grid[0]||[],byName);}
+// 讲台/黑板标在表格最下面一行 ⇒ 最后一行才是第 1 排，需要上下对调
+function podiumFromBottom(grid,byName){return isPodiumRow(grid[grid.length-1]||[],byName);}
+function findSideSeat(grid,which){
+  for(const row of grid)for(const cell of row){
+    const m=seatMarker(cell);
+    if(m&&m.side===which){const n=stripSideLabel(cell);if(n)return n;}
+  }
+  return null;
+}
+// 把识别到的原始格整理成 {cols,rows,grid,sideL,sideR,info}
+function normalizeSeatRows(rows,view){
+  const padded=padSeatRows(rows);
+  if(isSeatListFormat(padded))return normalizeSeatList(padded);
+  const analyzed=analyzeSeatGrid(padded);
+  const cols=Math.max(1,Math.min(12,analyzed.cols||1)),rowsCount=Math.max(1,Math.min(12,analyzed.rows||1));
+  const grid=Array.from({length:rowsCount},(_,r)=>Array.from({length:cols},(_,c)=>(analyzed.grid[r]&&analyzed.grid[r][c])||''));
+  return {cols,rows:rowsCount,grid,sideL:analyzed.sideL,sideR:analyzed.sideR,info:analyzed};
+}
+// 清单式（表头含 列/排/姓名）：Excel 第一行＝第1排，不做翻转
+function normalizeSeatList(rows){
+  const head=rows[0].map(v=>String(v));
+  const idxOf=re=>head.findIndex(v=>re.test(v));
+  const iCol=idxOf(/列/),iRow=idxOf(/排/),iName=idxOf(/姓名|学生/),iSeat=idxOf(/座位/);
+  let maxCol=0,maxRow=0;const entries=[];
+  rows.slice(1).forEach(r=>{
+    const marker=seatMarker(r[iSeat]||r[iCol]);
+    const name=String(r[iName]||'').trim();
+    if(marker&&marker.side){entries.push({side:marker.side,name:name||stripSideLabel(r[iSeat]||r[iCol])});return;}
+    const col=Number(String(r[iCol]||'').replace(/[^0-9]/g,'')),row=Number(String(r[iRow]||'').replace(/[^0-9]/g,''));
+    if(!col||!row)return;
+    maxCol=Math.max(maxCol,col);maxRow=Math.max(maxRow,row);
+    entries.push({col,row,name});
+  });
+  const grid=Array.from({length:Math.max(1,maxRow)},()=>Array.from({length:Math.max(1,maxCol)},()=>''));
+  entries.forEach(e=>{if(e.col&&e.row)grid[e.row-1][e.col-1]=e.name;});
+  const sideL=entries.find(e=>e.side==='sideL'),sideR=entries.find(e=>e.side==='sideR');
+  const info={flipRows:false,cols:Math.max(1,maxCol),rows:Math.max(1,maxRow),grid,sideL:null,sideR:null,matched:countSeatNames(grid),keptCols:Math.max(1,maxCol),dropped:[],notes:[]};
+  info.notes.push({msg:'按清单式表格识别（列/排/姓名），共 '+entries.length+' 条','kind':'info'});
+  return {cols:info.cols,rows:info.rows,grid,sideL:sideL?sideL.name:null,sideR:sideR?sideR.name:null,info};
 }
 function findStudentByName(name){
   const target=String(name||'').trim();if(!target)return null;
@@ -627,18 +950,57 @@ async function importSeatFile(file){
 }
 async function finishSeatImport(rows){
   const normalized=normalizeSeatRows(rows,seatImportView());
+  const beforeSaved=copyLayout(state.seatLayout);   // applySeatImport 会就地改写 state.seatLayout，先留底
   const {placed,unmatched}=applySeatImport(normalized);
-  await saveSeatLayout(state.seatLayout);
+  const importHint=seatEditor?'（在编辑弹窗里：点“×”→“确认修改”后才保存）':'';
+  if(seatEditor){
+    // 从编辑弹窗里导入：进草稿，等点“确认修改”才真正保存
+    seatEditor.layout=copyLayout(state.seatLayout);
+    if(JSON.stringify(seatEditor.layout)!==JSON.stringify(beforeSaved)){
+      if(!seatEditor.history.length)recordSeatSnapshot(seatEditor.base);
+      seatEditor.dirty=true;
+    }
+    seatEditor.selectedSeatId='';seatEditor.selectedPoolId='';
+  }else{
+    await saveSeatLayout(state.seatLayout);
+  }
   $('#seatImportModal')?.remove();
-  if(seatEditor){seatEditor.layout=copyLayout(state.seatLayout);renderSeatEditor();}
+  if(seatEditor)renderSeatEditor();
   renderRollcall();
-  toast('已导入座位表：'+placed+' 人落座'+(unmatched.length?'，'+unmatched.length+' 个名字没匹配到：'+unmatched.slice(0,3).join('、'):''));
+  showSeatImportResult(normalized,{placed,unmatched,hint:importHint});
+}
+// 导入结果卡：把“识别成几列几排、哪些列被忽略、有没有旋转、谁没对上”讲清楚
+function showSeatImportResult(normalized,result){
+  $('#seatImportResult')?.remove();
+  const info=normalized.info||{};
+  const matched=info.matched!==undefined?info.matched:result.placed;
+  const stats='识别为 '+normalized.cols+' 列 × '+normalized.rows+' 排，'+matched+' 人与班内名单对上（共安排 '+result.placed+' 个座位）';
+  const notes=(info.notes||[]).map(n=>'<li class="seat-import-note '+esc(n.kind||'info')+'">'+esc(n.msg)+'</li>').join('');
+  const unmatched=result.unmatched&&result.unmatched.length
+    ?'<p class="hint"><strong>没对上班内名单的单元格：</strong>'+esc(result.unmatched.slice(0,12).join('、'))+(result.unmatched.length>12?' 等 '+result.unmatched.length+' 个':'')+'<br>这些单元格保持空位，可用“按名册填充”或手动落座补齐。</p>'
+    :'<p class="hint">没有出现对不上名单的名字。</p>';
+  const modal=document.createElement('div');
+  modal.id='seatImportResult';modal.className='modal-backdrop';
+  modal.innerHTML='<div class="modal-card seat-import-card" role="dialog" aria-modal="true">'
+    +'<div class="modal-header"><h2>导入完成</h2><button class="icon-button modal-close" aria-label="关闭">×</button></div>'
+    +'<p class="seat-import-stats">'+esc(stats)+'</p>'
+    +(notes?'<ul class="seat-import-notes">'+notes+'</ul>':'')
+    +unmatched
+    +(result.hint?'<p class="hint">'+esc(result.hint)+'</p>':'')
+    +'<div class="actions"><button class="primary" id="seatImportOk">知道了</button></div>'
+    +'</div>';
+  document.body.appendChild(modal);
+  const close=()=>modal.remove();
+  modal.querySelector('.modal-close').onclick=close;
+  $('#seatImportOk').onclick=close;
+  modal.onclick=e=>{if(e.target===modal)close();};
 }
 async function exportSeatXlsx(){
-  const layout=state.seatLayout;
+  const layout=seatEditor?seatEditor.layout:state.seatLayout;   // 编辑器开着就导出当前草稿
   if(!layout){toast('还没有座位表');return;}
   if(typeof JSZip==='undefined'){toast('导出组件尚未加载，请刷新页面重试');return;}
   const nameOf=seat=>{const stu=studentOfSeat(seat);return stu?stu.name:'';};
+  const seatIn=id=>layout.seats.find(s=>s.id===id)||null;
   const grid=[];
   for(let row=1;row<=layout.rows;row++){
     const line=[];
@@ -646,7 +1008,7 @@ async function exportSeatXlsx(){
     grid.push(line);
   }
   grid.reverse();   // 教师视角：第一排写在最后一行
-  grid.push(['讲台左：'+nameOf(seatById('sideL')),...Array.from({length:Math.max(0,layout.cols-2)},()=>''),'讲台右：'+nameOf(seatById('sideR'))]);
+  grid.push(['讲台左：'+nameOf(seatIn('sideL')),...Array.from({length:Math.max(0,layout.cols-2)},()=>''),'讲台右：'+nameOf(seatIn('sideR'))]);
   const zip=new JSZip();
   zip.file('[Content_Types].xml','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>');
   zip.file('_rels/.rels','<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>');
@@ -659,24 +1021,27 @@ async function exportSeatXlsx(){
   a.download='座位表-'+state.currentClass+'-'+localDate()+'.xlsx';
   a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
-  toast('座位表已导出（教师视角：第一排在最下面）');
+  toast(seatEditor?'座位表已导出（当前编辑中的安排，教师视角：第一排在最下面）':'座位表已导出（教师视角：第一排在最下面）');
 }
 function openSeatImport(){
   $('#seatImportModal')?.remove();
   const modal=document.createElement('div');
   modal.id='seatImportModal';modal.className='modal-backdrop';
+  const viewSel=seatImportView();
   modal.innerHTML=`<div class="modal-card seat-import-card" role="dialog" aria-modal="true">\
 <div class="modal-header"><h2>导入座位表</h2><button class="icon-button modal-close" aria-label="关闭">×</button></div>\
-<div class="field"><label>Excel 视角</label>\
+<div class="field"><label>表格方向</label>\
 <select id="seatImportViewSel">\
-<option value="teacher" ${seatImportView()!=='normal'?'selected':''}>教师视角（Excel 最后一行 = 第1排）</option>\
-<option value="normal" ${seatImportView()==='normal'?'selected':''}>正常视角（Excel 第一行 = 第1排）</option>\
+<option value="auto" ${viewSel==='auto'?'selected':''}>自动识别（推荐）</option>\
+<option value="normal" ${viewSel==='normal'?'selected':''}>不上下对调（Excel 第一行 = 第1排）</option>\
+<option value="flip" ${viewSel==='flip'?'selected':''}>上下对调（Excel 最后一行 = 第1排）</option>\
 </select></div>\
 <div class="field"><label>选择文件（.xlsx / .csv / .txt）</label>\
 <input id="seatImportFile" type="file" accept=".xlsx,.csv,.txt"></div>\
 <div class="field"><label>或直接粘贴表格（每行一排，用 Tab/逗号分隔）</label>\
-<textarea id="seatImportText" rows="6" placeholder="张三&#9;李四&#9;王五&#10;赵六&#9;孙七&#9;"></textarea></div>\
-<p class="hint">支持矩阵式（按教室形状填写，讲台两侧写“讲台左：姓名 / 讲台右：姓名”）与清单式（表头含 列 / 排 / 姓名）。</p>\
+<textarea id="seatImportText" rows="6" placeholder="第一组&#9;&#9;第二组&#10;张三&#9;&#9;李四&#10;王五&#9;&#9;赵六"></textarea></div>\
+<p class="hint"><strong>会自动识别：</strong>大组之间的空列不算座位（不再把空列当成一整组）；“第一组 / 讲台 / 门 / 过道”等标记不会当成姓名；一列里能对上班内名单的姓名少于 ${SEAT_COL_MIN_NAMES} 人时不作为座位列。识别到讲台在表格上方时，整表旋转 180°（讲台对齐下方，靠近讲台的学生依然靠近讲台）。</p>\
+<p class="hint">姓名一律用已导入的本班名单核对，所以请先导入学生成绩/名单。另支持清单式表格（表头含 列 / 排 / 姓名）。</p>\
 <div class="actions"><button class="primary" id="seatImportPasteBtn">导入粘贴内容</button></div>\
 </div>`;
   document.body.appendChild(modal);

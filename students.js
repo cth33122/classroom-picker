@@ -69,15 +69,31 @@ ${examRows.length>5?`<div class="actions"><button class="secondary" id="toggleEx
 </div>\
 <div class="panel">\
 <h3>点名记录 <span class="badge">${calls.length}次</span></h3>\
-${calls.length?calls.map(x=>`<div class="stat-row history-row">\
+<div class="table-header history-detail-header">\
+<span>时间戳</span>\
+<span>难度</span>\
+<span>评价</span>\
+<span>详情</span>\
+</div>\
+${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc(String(x.id));return `<div class="stat-row history-detail-row">\
 <span>${new Date(x.at).toLocaleString()}</span>\
 <span>${['','简单','适中','困难'][x.difficulty]||'—'}</span>\
-<span>${esc(x.className||'')}</span>\
-</div>`).join(''):'<div class="empty">暂无点名记录</div>'}\
+<span class="history-eval-cell">${evalText(x.eval)}</span>\
+<span><button type="button" class="student-link question-detail-link" data-student-questions="${esc(id)}" title="查看并编辑该生的问题记录">详情</button></span>\
+</div>\
+<div class="stat-row history-q-row${q?'':' is-empty'}" data-history-question="${qid}" title="${q?'点击编辑这次的问题记录':'点击记录这次的问题'}">${q?esc(questionSummary(q,60)):'＋ 记录本次问题'}</div>`;}).join(''):'<div class="empty">暂无点名记录</div>'}\
 </div>`;
     
   // 返回：回到进入详情页之前所在的页面，且不重绘该页面（保留其原有状态与滚动位置）
   $('#backStudents').onclick=()=>{const from=state.studentDetailFrom||'students';state.studentDetail=null;state.studentExamExpand=false;renderStudents();const el=$('#view-students');if(el)el.scrollTop=state.studentListScroll||0;if(from!=='students')goToView(from);};
+  // 点名记录里的“详情”按钮与小字问题行（该生问题记录弹窗）
+  $$('#view-students [data-student-questions]').forEach(b=>b.onclick=()=>openStudentQuestions(b.dataset.studentQuestions,{onClose:()=>renderStudentDetail(id)}));
+  // 每条记录下方的问题栏：点开这一条的内联编辑框（没有内容时用来补录）
+  $$('#view-students [data-history-question]').forEach(el=>el.onclick=()=>{
+    const rec=state.history.find(x=>String(x.id)===String(el.dataset.historyQuestion));
+    if(!rec){toast('这条记录已不存在');renderStudentDetail(id);return;}
+    openRecordQuestionEditor(rec.id,()=>renderStudentDetail(id));
+  });
   $('#detailFocusBtn').onclick=async()=>{s.focus=!s.focus;await DB.put(s);renderStudentDetail(id);toast(s.focus?`已把 ${s.name} 设为关注`:`已取消 ${s.name} 的关注`);};$('#detailNoCallBtn').onclick=async()=>{s.noCall=!s.noCall;await DB.put(s);refreshCandidatesAfterSettings();renderStudentDetail(id);toast(s.noCall?`已把 ${s.name} 标记为不参与点名`:`已恢复 ${s.name} 的候选资格`);};$('#editPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openNoteBtn').onclick=()=>openNoteEditor(id);const examToggleBtn=$('#toggleExamList');if(examToggleBtn)examToggleBtn.onclick=()=>{state.studentExamExpand=!state.studentExamExpand;renderStudentDetail(id);};drawScoreChart(s,trendRecords);$('#viewScoreChart').onclick=()=>openScoreChart(records);$('#downloadScoreChartInline').onclick=()=>{const canvas=$('#scoreChart');const link=document.createElement('a');link.download='成绩趋势图.png';link.href=canvas.toDataURL('image/png');link.click();};
 }
 

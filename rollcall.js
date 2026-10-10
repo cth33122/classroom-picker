@@ -51,7 +51,7 @@ function renderRollcall(){
 <button class="secondary seat-edit-btn" id="editSeatBtn">编辑座位</button>\
 </div>\
 </div>\
-${seatChartHtml()}\
+${seatChartHtml(seatFitCtxFor('roll'))}\
 </div>`:`<div class="panel seat-panel seat-panel-collapsed">\
 <div class="seat-panel-head">\
 <h3>座位表</h3>\
@@ -61,21 +61,50 @@ ${seatChartHtml()}\
 </div>\
 </div>\
 </div>`;
-  $('#view-rollcall').innerHTML=`<div class="rollcall-body">\
-${seatPanel}\
-${seatedCount>0?'':'<div class="rollcall-gap"></div>'}\
-<div class="panel">\
-<div class="candidate-panel-head">\
-<h3>本次候选</h3>\
-<button class="note-link" id="rulesBtn">点名规则介绍</button>\
+  // 已点名：只显示“点名结果卡”，它不再是可点按钮 —— 再点也不会重复写点名记录
+  const resultCard=state.selectedCandidate?(function(){
+    const live=state.students.find(x=>x.id===state.selectedCandidate);
+    if(!live)return '';
+    const avg=averageScoreRate(live),rank=rankMap.get(live.id);
+    const pickedCand=state.candidates.find(c=>c.student.id===live.id);
+    const rec=latestCallRecord(live.id);
+    const seatText=seatPositionText(live.id);
+    return `<div class="candidate-result" data-result-student="${esc(live.id)}">\
+<div class="candidate-result-head">\
+<strong>${nameHtml(live,live.displayName||live.name)}</strong>${studentTags(live)}\
+<span class="candidate-result-diff">${['','简单','适中','困难'][state.difficulty]||''}</span>\
 </div>\
-<div class="candidate-list" style="--cand-cols:${candCols}">${visible.length?visible.map(c=>{const live=liveOf(c),avg=averageScoreRate(live),rank=rankMap.get(live.id);return `<button class="candidate ${state.selectedCandidate===live.id?'selected-candidate':''}" data-student="${esc(live.id)}">\
+<div class="candidate-result-meta">\
+<span>${avg===null?'—':`${(avg*100).toFixed(1)}%`} · 班次 ${rank??'—'}</span>\
+${pickedCand?`<span>近期点名次数：${pickedCand.recentCount}</span>`:''}\
+<span>${esc(seatText)}</span>\
+</div>\
+<div class="candidate-result-eval">\
+<span class="hint">本次评价</span>\
+<button type="button" class="eval-btn${rec&&rec.eval==='good'?' is-on is-good':''}" data-rollcall-eval="good" title="😊 满意（再点一次取消）">😊</button>\
+<button type="button" class="eval-btn${rec&&rec.eval==='bad'?' is-on is-bad':''}" data-rollcall-eval="bad" title="😢 不满意（再点一次取消）">😢</button>\
+<button type="button" class="secondary question-record-btn" data-rollcall-question="${esc(live.id)}" title="记录这次问的问题">✎ 记录问题</button>\
+${rec&&String(rec.question||'').trim()?`<button type="button" class="student-link question-latest" data-student-questions="${esc(live.id)}" title="查看该生的问题记录">已记问题：${esc(questionSummary(rec.question,18))}</button>`:'<span class="hint">还没记录问题</span>'}\
+</div>\
+</div>`;
+  })():'';
+  const candidateArea=state.selectedCandidate?resultCard
+    :`<div class="candidate-list" style="--cand-cols:${candCols}">${visible.length?visible.map(c=>{const live=liveOf(c),avg=averageScoreRate(live),rank=rankMap.get(live.id);return `<button type="button" class="candidate" data-student="${esc(live.id)}">\
 <span>\
 <strong>${nameHtml(live,live.displayName||live.name)}${live.focus?' <span class="badge">关注</span>':''}</strong>\
 <small>${avg===null?'—':`${(avg*100).toFixed(1)}%`} · 班次 ${rank??'—'}</small>\
 <small class="candidate-meta">近期点名次数：${c.recentCount}</small>\
 </span>\
-</button>`}).join(''):`<div class="empty">${emptyText}</div>`}</div>${visible.length===0&&state.currentClass?`<p class="hint">${String(state.settings.sameDayRepeat)==='allow'?'当天已点名的学生也可以再次进入候选。':'当天已点名的学生不会再次进入候选。'}标记为“不参与点名”的学生不会进入候选。</p>`:''}${state.selectedCandidate?'<div class="selected-actions"><button class="danger change-student" id="markSelectedAbsent">缺席</button><button class="secondary change-student" id="undoCallBtn">撤销</button></div>':''}</div>\
+</button>`}).join(''):`<div class="empty">${emptyText}</div>`}</div>`;
+  $('#view-rollcall').innerHTML=`<div class="rollcall-body">\
+${seatPanel}\
+${seatedCount>0?'':'<div class="rollcall-gap"></div>'}\
+<div class="panel">\
+<div class="candidate-panel-head">\
+<h3>${state.selectedCandidate?'本次点名':'本次候选'}</h3>\
+<button class="note-link" id="rulesBtn">点名规则介绍</button>\
+</div>\
+${candidateArea}${!state.selectedCandidate&&visible.length===0&&state.currentClass?`<p class="hint">${String(state.settings.sameDayRepeat)==='allow'?'当天已点名的学生也可以再次进入候选。':'当天已点名的学生不会再次进入候选。'}标记为“不参与点名”的学生不会进入候选。</p>`:''}${state.selectedCandidate?'<div class="selected-actions"><button class="danger change-student" id="markSelectedAbsent">缺席</button><button class="secondary change-student" id="undoCallBtn">撤销</button><button class="secondary change-student" id="continueRollcallBtn">继续点名</button></div>':''}</div>\
 </div>\
 <div class="panel hero rollcall-actions">\
 <div class="rollcall-actions-head">\
@@ -93,16 +122,58 @@ ${seatedCount>0?'':'<div class="rollcall-gap"></div>'}\
   $$('#view-rollcall [data-seat]').forEach(b=>b.onclick=()=>openStudentDetailFromSeat(b.dataset.seat));
   const seatColorSel=$('#seatColorMode');
   if(seatColorSel){seatColorSel.value=state.seatColorMode||'none';seatColorSel.onchange=e=>{state.seatColorMode=e.target.value;renderRollcall();};}
-  fitSeatNames();
-  requestAnimationFrame(fitSeatNames);
-  $$('[data-difficulty]').forEach(b=>b.onclick=()=>{state.difficulty=Number(b.dataset.difficulty);state.selectedCandidate=null;recommend();});$$('.candidate').forEach(b=>b.onclick=()=>selectStudent(b.dataset.student));$('#markSelectedAbsent')?.addEventListener('click',markSelectedAbsent);$('#undoCallBtn')?.addEventListener('click',undoSelectedCall);
+  refitSeats();
+  requestAnimationFrame(refitSeats);
+  $$('[data-difficulty]').forEach(b=>b.onclick=()=>{state.difficulty=Number(b.dataset.difficulty);state.selectedCandidate=null;recommend();});
+  $$('#view-rollcall [data-student]').forEach(b=>b.onclick=()=>selectStudent(b.dataset.student));
+  $$('#view-rollcall [data-rollcall-eval]').forEach(b=>b.onclick=()=>tapRollcallEval(b.dataset.rollcallEval));
+  const questionBtn=$('#view-rollcall [data-rollcall-question]');
+  if(questionBtn)questionBtn.onclick=()=>{
+    const rec=latestCallRecord(state.selectedCandidate);
+    if(!rec){toast('先点名再记录问题');return;}
+    openRecordQuestionEditor(rec.id,()=>renderRollcall());
+  };
+  const questionsLink=$('#view-rollcall [data-student-questions]');
+  if(questionsLink)questionsLink.onclick=()=>openStudentQuestions(questionsLink.dataset.studentQuestions,{onClose:()=>renderRollcall()});
+  $('#markSelectedAbsent')?.addEventListener('click',markSelectedAbsent);
+  $('#undoCallBtn')?.addEventListener('click',undoSelectedCall);
+  $('#continueRollcallBtn')?.addEventListener('click',()=>{state.selectedCandidate=null;state.candidates=[];recommend();});
+  paintRollcallEval(state.selectedCandidate?latestCallRecord(state.selectedCandidate):null);
 }
 
-// 撤销本次点名：删除刚写入的点名记录，并重新生成候选
+// 该生最近一次点名记录（评价与问题就存在这条记录上）
+function latestCallRecord(studentId){
+  if(!studentId)return null;
+  return [...state.history].filter(x=>String(x.studentId)===String(studentId))
+    .sort((a,b)=>(Date.parse(b.at)||0)-(Date.parse(a.at)||0))[0]||null;
+}
+// 直接更新“本轮评价”那块按钮的状态，不整体重绘（避免重置候选）
+function paintRollcallEval(rec){
+  const value=rec?String(rec.eval||''):'';
+  $$('#view-rollcall [data-rollcall-eval]').forEach(b=>{
+    const on=value===b.dataset.rollcallEval;
+    b.classList.toggle('is-on',on);
+    b.classList.toggle('is-good',on&&b.dataset.rollcallEval==='good');
+    b.classList.toggle('is-bad',on&&b.dataset.rollcallEval==='bad');
+  });
+}
+async function tapRollcallEval(value){
+  const rec=latestCallRecord(state.selectedCandidate);
+  if(!rec){toast('先点名再记录评价');return;}
+  const saved=await toggleHistoryEval(rec,value);
+  if(saved){
+    const idx=state.history.findIndex(x=>String(x.id)===String(saved.id));
+    if(idx>=0)state.history[idx]=saved;
+  }
+  paintRollcallEval(saved);
+}
+
+// 撤销本次点名：删除刚写入的点名记录，并重新生成候选（该次的评价与问题也随之删除）
 async function undoSelectedCall(){
   const id=state.selectedCandidate;
   if(!id)return;
   const latest=[...state.history].filter(x=>x.studentId===id).sort((a,b)=>Date.parse(b.at)-Date.parse(a.at))[0];
+  const hadReview=Boolean(latest&&(latest.eval||String(latest.question||'').trim()));
   if(latest?.id!==undefined){
     await DB.remove('history',latest.id);
     state.history=state.history.filter(x=>x.id!==latest.id);
@@ -110,7 +181,7 @@ async function undoSelectedCall(){
   state.selectedCandidate=null;
   state.candidates=[];
   recommend();
-  toast('已撤销本次点名');
+  toast(hadReview?'已撤销本次点名（该次的评价与问题记录一并删除）':'已撤销本次点名');
 }
 
 // 点名规则介绍弹窗
