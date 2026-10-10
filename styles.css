@@ -273,7 +273,8 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
 .candidate-result-eval .eval-btn.is-on { border-color:var(--teal); box-shadow:0 0 0 2px rgba(15,118,110,.25); }
 .candidate-result-eval .eval-btn.is-good { background:#e8f7ef; }
 .candidate-result-eval .eval-btn.is-bad { background:#fdeceb; }
-.question-record-btn { min-height:36px; padding:6px 12px; font-size:13px; }
+/* “记录问题”靠右显示（margin-left:auto 把它推到本行剩余空间的右侧） */
+.question-record-btn { margin-left:auto; min-height:36px; padding:6px 12px; font-size:13px; }
 .question-latest { font-size:13px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* 记录问题 / 问题记录弹窗 */
 .eval-picker { display:flex; align-items:center; gap:8px; }
