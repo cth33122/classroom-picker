@@ -95,7 +95,6 @@ ${rec&&String(rec.question||'').trim()?`<button type="button" class="student-lin
 </span>\
 </button>`}).join(''):`<div class="empty">${emptyText}</div>`}</div>`;
   $('#view-rollcall').innerHTML=`<div class="rollcall-body">\
-<div id="backupReminder"></div>\
 ${seatPanel}\
 ${seatedCount>0?'':'<div class="rollcall-gap"></div>'}\
 <div class="panel">\
@@ -144,7 +143,6 @@ ${candidateArea}${!state.selectedCandidate&&visible.length===0&&state.currentCla
   $('#markSelectedAbsent')?.addEventListener('click',markSelectedAbsent);
   $('#undoCallBtn')?.addEventListener('click',undoSelectedCall);
   paintRollcallEval(state.selectedCandidate?latestCallRecord(state.selectedCandidate):null);
-  renderBackupReminder();
 }
 
 // 该生最近一次点名记录（评价与问题就存在这条记录上）

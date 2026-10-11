@@ -308,14 +308,7 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
 .question-text { grid-column:2; width:100%; min-height:39px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; background:#fff; color:var(--ink); font:inherit; font-size:14px; line-height:21px; resize:none; box-sizing:border-box; }
 /* 备份与恢复面板：只放“立即备份 / 取消”两个按钮 */
 .backup-actions > * { flex:1 1 0; min-width:130px; }
-/* 周六备份提醒条（点名页顶部） */
-.reminder-banner { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; border-color:#f2d08a; background:#fffaf0; }
-.reminder-text { display:flex; flex-direction:column; gap:3px; min-width:0; flex:1 1 220px; font-size:13px; line-height:1.5; }
-.reminder-text strong { color:var(--warn); font-size:14px; }
-.reminder-text .hint { margin:0; font-size:12px; }
-.reminder-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
-.reminder-actions .primary,.reminder-actions .secondary { min-height:36px; padding:7px 12px; font-size:13px; }
-.reminder-dismiss { min-height:36px; padding:6px 10px; border:0; background:transparent; color:var(--muted); font-size:12px; text-decoration:underline; text-underline-offset:2px; cursor:pointer; }
+/* 提醒条上印出版本号：一眼确认手机跑的是新版还是旧缓存 */
 /* 设置页“数据重置”：两个按钮同一行并排 */
 .reset-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .reset-actions > * { flex:1 1 0; min-width:118px; }
