@@ -308,7 +308,19 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
 .question-text { grid-column:2; width:100%; min-height:39px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; background:#fff; color:var(--ink); font:inherit; font-size:14px; line-height:21px; resize:none; box-sizing:border-box; }
 /* 备份与恢复面板：只放“立即备份 / 取消”两个按钮 */
 .backup-actions > * { flex:1 1 0; min-width:130px; }
-/* 提醒条上印出版本号：一眼确认手机跑的是新版还是旧缓存 */
+/* 设置项旁边的小问号：点开该设置项的说明弹窗 */
+.field-help { flex:0 0 auto; width:20px; height:20px; min-height:0; padding:0; border:1px solid var(--line); border-radius:50%; background:#fff; color:var(--muted); font-size:12px; font-weight:700; line-height:1; cursor:pointer; }
+.field-help:hover, .field-help:focus { border-color:var(--teal); color:var(--teal); }
+.field > label { display:inline-flex; align-items:center; gap:6px; }
+/* 设置项说明弹窗 */
+.rule-help-card { width:min(600px,100%); max-height:88vh; }
+.rule-help-body { display:grid; gap:10px; font-size:14px; line-height:1.65; }
+.rule-help-body p { margin:0; }
+.rule-help-body strong { color:var(--teal); }
+.rule-help-list { margin:0; padding:0; list-style:none; display:grid; gap:6px; }
+.rule-help-list li { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; padding:7px 10px; border:1px solid var(--line); border-radius:6px; background:#fff; font-size:13px; }
+.rule-help-list li.is-on { border-color:var(--teal); background:var(--mint); }
+.rule-help-list li span { color:var(--muted); font-size:12px; }
 /* 设置页“数据重置”：两个按钮同一行并排 */
 .reset-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .reset-actions > * { flex:1 1 0; min-width:118px; }
