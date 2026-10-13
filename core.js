@@ -1,6 +1,6 @@
 // 共享状态与通用工具：state/$/$$、考试与成绩的读取换算
 
-const state={view:'rollcall',students:[],history:[],absences:[],exams:[],examResults:[],settings:{},candidates:[],selectedCandidate:null,currentClass:'',difficulty:3,source:'',pendingImport:null,studentSort:'score-desc',studentDetail:null,studentDetailFrom:'',studentListScroll:0,statsMode:'timeline',historyStudentId:'',studentCurrentExamId:'',studentPreviousExamId:''};
+const state={view:'rollcall',students:[],history:[],absences:[],exams:[],examResults:[],settings:{},candidates:[],selectedCandidate:null,currentClass:'',difficulty:3,source:'',pendingImport:null,studentSort:'score-desc',studentDetail:null,studentDetailFrom:'',studentListScroll:0,statsMode:'timeline',historyStudentId:'',studentCurrentExamId:'',studentPreviousExamId:'',scoreChartMode:'rate'};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 
 // Current-exam selection always derives the immediately older exam.

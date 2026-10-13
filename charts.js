@@ -80,8 +80,11 @@ function drawDifficultyPie(counts){
 }
 
 // fitWidth：把整张图缩放到指定宽度内（一屏看全，不横向滚动）
-function renderScoreCanvas(canvas,records,large=false,name='',fitWidth=0){
+// mode='rate' 画得分率（0–100% 固定纵轴，跨满分可比）；mode='raw' 画绝对分（旧口径）
+// 年段均分只统计"有成绩"的学生：导入时缺考/空成绩会存成 0，所以这里用 >0 排除缺考的人与其分数
+function renderScoreCanvas(canvas,records,large=false,name='',fitWidth=0,mode='rate'){
   if(!canvas||!records.length)return;
+  const asRate=String(mode)!=='raw';
   const dpr=Math.max(1,window.devicePixelRatio||1);
   let width,height;
   if(fitWidth){width=Math.max(240,Math.round(fitWidth));height=Math.round(width*.72);}
@@ -90,14 +93,35 @@ function renderScoreCanvas(canvas,records,large=false,name='',fitWidth=0){
   const ctx=canvas.getContext('2d');
     ctx.setTransform(dpr,0,0,dpr,0,0);
     ctx.clearRect(0,0,width,height);
-    const p={left:52,right:28,top:36,bottom:48},scores=records.map(x=>Number(x.result.score)||0),avgs=records.map(x=>{const vals=state.examResults.filter(r=>r.examId===x.exam.id).map(r=>Number(r.result?.score)).filter(Number.isFinite);return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:0;}),max=Math.max(100,...scores,...avgs),plotW=width-p.left-p.right,plotH=height-p.top-p.bottom,x=i=>p.left+(records.length===1?plotW/2:i*plotW/(records.length-1)),y=v=>p.top+plotH-(v/max)*plotH,fmt=v=>Number.isInteger(v)?String(v):v.toFixed(1);
+    const p={left:52,right:28,top:36,bottom:48},plotW=width-p.left-p.right,plotH=height-p.top-p.bottom;
+    const rawScores=records.map(x=>Number(x.result&&x.result.score)||0);
+    const scores=records.map((x,i)=>asRate?examScoreRate(x.exam,x.result)*100:rawScores[i]);
+    const avgs=records.map(x=>{
+      const rates=state.examResults.filter(r=>r.examId===x.exam.id)
+        .map(r=>({score:Number(r.result&&r.result.score),examId:x.exam.id}))
+        .filter(o=>Number.isFinite(o.score)&&o.score>0);            // >0 = 排除缺考
+      if(!rates.length)return null;
+      if(asRate){
+        const found=state.exams.find(e=>e.id===x.exam.id)||x.exam;
+        return rates.reduce((sum,o)=>sum+(examScoreRate(found,{score:o.score})||0),0)/rates.length*100;
+      }
+      return rates.reduce((sum,o)=>sum+o.score,0)/rates.length;
+    });
+    // 得分率：纵轴固定 0–100%；绝对分：0 到"最高分/均分"向上取整
+    let top=100;
+    if(!asRate){
+      const peak=Math.max(100,...rawScores,...avgs.filter(v=>Number.isFinite(v)));
+      top=Math.ceil(peak/10)*10;
+    }
+    const x=i=>p.left+(records.length===1?plotW/2:i*plotW/(records.length-1)),y=v=>p.top+plotH-(Math.max(0,Math.min(top,v))/top)*plotH,fmt=v=>asRate?`${Math.round(v)}%`:(Number.isInteger(v)?String(v):v.toFixed(1));
+    const plotVal=asRate?v=>v===null?null:Math.round(v*10)/10:v=>v;
     
-  ctx.font='12px sans-serif';ctx.textAlign='right';ctx.fillStyle='#6b7c78';ctx.strokeStyle='#dfe9e6';for(let i=0;i<=4;i++){const value=max*i/4,yy=y(value);ctx.beginPath();ctx.moveTo(p.left,yy);ctx.lineTo(width-p.right,yy);ctx.stroke();ctx.fillText(fmt(value),p.left-8,yy+4);}
+  ctx.font='12px sans-serif';ctx.textAlign='right';ctx.fillStyle='#6b7c78';ctx.strokeStyle='#dfe9e6';for(let i=0;i<=4;i++){const value=top*i/4,yy=y(value);ctx.beginPath();ctx.moveTo(p.left,yy);ctx.lineTo(width-p.right,yy);ctx.stroke();ctx.fillText(fmt(value),p.left-8,yy+4);}
   const label=(value,xx,ly,color)=>{ctx.font='12px sans-serif';ctx.fillStyle=color;ctx.textAlign='center';ctx.fillText(fmt(value),xx,Math.max(18,Math.min(height-28,ly)));};
-  const line=(values,color)=>{ctx.strokeStyle=color;ctx.lineWidth=2.5;ctx.beginPath();values.forEach((v,i)=>{i?ctx.lineTo(x(i),y(v)):ctx.moveTo(x(i),y(v));});ctx.stroke();values.forEach((v,i)=>{const xx=x(i),yy=y(v);ctx.fillStyle=color;ctx.beginPath();ctx.arc(xx,yy,4,0,Math.PI*2);ctx.fill();});};
-  line(avgs,'#16302b');line(scores,'#b42318');
+  const line=(values,color)=>{ctx.strokeStyle=color;ctx.lineWidth=2.5;ctx.beginPath();let started=false;values.forEach((v,i)=>{if(v===null||v===undefined){started=false;return;}const xx=x(i),yy=y(v);started?ctx.lineTo(xx,yy):ctx.moveTo(xx,yy);started=true;});ctx.stroke();values.forEach((v,i)=>{if(v===null||v===undefined)return;const xx=x(i),yy=y(v);ctx.fillStyle=color;ctx.beginPath();ctx.arc(xx,yy,4,0,Math.PI*2);ctx.fill();});};
+  line(avgs.map(plotVal),'#16302b');line(scores,'#b42318');
   // Label order follows the actual values: the higher score is drawn above the lower score.
-  records.forEach((_,i)=>{const xx=x(i),avgY=y(avgs[i]),scoreY=y(scores[i]),close=Math.abs(avgY-scoreY)<42;
+  records.forEach((_,i)=>{if(avgs[i]===null||!Number.isFinite(scores[i]))return;const xx=x(i),avgY=y(avgs[i]),scoreY=y(scores[i]),close=Math.abs(avgY-scoreY)<42;
     if(scores[i]>=avgs[i]){
       label(scores[i],xx,scoreY-(close?25:14),'#b42318');
       label(avgs[i],xx,avgY+(close?25:18),'#16302b');
@@ -106,18 +130,21 @@ function renderScoreCanvas(canvas,records,large=false,name='',fitWidth=0){
       label(scores[i],xx,scoreY+(close?25:18),'#b42318');
     }
   });
-  ctx.font='bold 12px sans-serif';ctx.textAlign='left';ctx.fillStyle='#16302b';ctx.fillText('班级均分',p.left,18);ctx.fillStyle='#b42318';ctx.fillText('个人得分',p.left+78,18);
+  const legendA=asRate?'年段得分率均分':'年段均分',legendB=asRate?'个人得分率':'个人得分';
+  ctx.font='bold 12px sans-serif';ctx.textAlign='left';ctx.fillStyle='#16302b';ctx.fillText(legendA,p.left,18);ctx.fillStyle='#b42318';ctx.fillText(legendB,p.left+108,18);
   if(name){ctx.textAlign='right';ctx.font='bold 13px sans-serif';ctx.fillStyle='#16302b';ctx.fillText(String(name),width-p.right,18);}
   ctx.font='11px sans-serif';ctx.fillStyle='#6b7c78';records.forEach((r,i)=>{ctx.textAlign='center';ctx.fillText(String(r.exam.date||''),x(i),height-17);});
 }
 
 // 记住当前详情页学生的名字，供“整图”与“预览”两处画进图里
 let lastScoreChartName='';
+// 纵轴口径：'rate' 得分率（0–100%，跨满分可比）| 'raw' 绝对分
+function scoreChartMode(){return String(state.scoreChartMode||'rate');}
 
 function drawScoreChart(student,records){
   lastScoreChartName=student?String(student.displayName||student.name||''):'';
   const el=$('#scoreChart');
-  renderScoreCanvas(el,records,false,lastScoreChartName);
+  renderScoreCanvas(el,records,false,lastScoreChartName,0,scoreChartMode());
   // 点图表 = 整图预览（一屏看全）；下方“查看高清图”仍是高清可横向滑动
   if(el)el.onclick=()=>openScorePreview(records,lastScoreChartName);
 }
@@ -133,7 +160,7 @@ function openScoreChart(records,name){
     document.body.appendChild(modal);
     modal.querySelector('.modal-close').onclick=()=>modal.remove();
     modal.onclick=e=>{if(e.target===modal)modal.remove();};
-    renderScoreCanvas($('#scoreChartLarge'),records,true,name||lastScoreChartName);
+    renderScoreCanvas($('#scoreChartLarge'),records,true,name||lastScoreChartName,0,scoreChartMode());
     $('#downloadScoreChart').onclick=()=>{const link=document.createElement('a');link.download='成绩趋势图.png';link.href=$('#scoreChartLarge').toDataURL('image/png');link.click();};
     
 }
@@ -151,7 +178,7 @@ function openScorePreview(records,name){
   modal.querySelector('.modal-close').onclick=close;
   modal.onclick=e=>{if(e.target===modal)close();};
   const wrap=modal.querySelector('.chart-preview-wrap');
-  renderScoreCanvas($('#scoreChartPreview'),records,false,name||lastScoreChartName,wrap.clientWidth);
+  renderScoreCanvas($('#scoreChartPreview'),records,false,name||lastScoreChartName,wrap.clientWidth,scoreChartMode());
   $('#downloadScorePreview').onclick=()=>{const link=document.createElement('a');link.download='成绩趋势图-预览.png';link.href=$('#scoreChartPreview').toDataURL('image/png');link.click();};
   $('#openFullChartBtn').onclick=()=>{close();openScoreChart(records,name);};
 }

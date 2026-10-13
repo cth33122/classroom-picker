@@ -63,6 +63,7 @@ ${examRows.length>5?`<div class="actions"><button class="secondary" id="toggleEx
 </canvas>\
 </div>\
 <div class="chart-actions">\
+<button class="secondary" id="toggleScoreMode">${scoreChartMode()==='raw'?'看得分率':'看绝对分'}</button>\
 <button class="secondary" id="viewScoreChart">查看高清图</button>\
 <button class="secondary" id="downloadScoreChartInline">下载图片</button>\
 </div>\
@@ -94,7 +95,7 @@ ${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc
     if(!rec){toast('这条记录已不存在');renderStudentDetail(id);return;}
     openStudentQuestions(rec.studentId,{focusId:rec.id,onClose:()=>renderStudentDetail(id)});
   });
-  $('#detailFocusBtn').onclick=async()=>{s.focus=!s.focus;await DB.put(s);renderStudentDetail(id);toast(s.focus?`已把 ${s.name} 设为关注`:`已取消 ${s.name} 的关注`);};$('#detailNoCallBtn').onclick=async()=>{s.noCall=!s.noCall;await DB.put(s);refreshCandidatesAfterSettings();renderStudentDetail(id);toast(s.noCall?`已把 ${s.name} 标记为不参与点名`:`已恢复 ${s.name} 的候选资格`);};$('#editPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openNoteBtn').onclick=()=>openNoteEditor(id);const examToggleBtn=$('#toggleExamList');if(examToggleBtn)examToggleBtn.onclick=()=>{state.studentExamExpand=!state.studentExamExpand;renderStudentDetail(id);};drawScoreChart(s,trendRecords);$('#viewScoreChart').onclick=()=>openScoreChart(records);$('#downloadScoreChartInline').onclick=()=>{const canvas=$('#scoreChart');const link=document.createElement('a');link.download='成绩趋势图.png';link.href=canvas.toDataURL('image/png');link.click();};
+  $('#detailFocusBtn').onclick=async()=>{s.focus=!s.focus;await DB.put(s);renderStudentDetail(id);toast(s.focus?`已把 ${s.name} 设为关注`:`已取消 ${s.name} 的关注`);};$('#detailNoCallBtn').onclick=async()=>{s.noCall=!s.noCall;await DB.put(s);refreshCandidatesAfterSettings();renderStudentDetail(id);toast(s.noCall?`已把 ${s.name} 标记为不参与点名`:`已恢复 ${s.name} 的候选资格`);};$('#editPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openNoteBtn').onclick=()=>openNoteEditor(id);const examToggleBtn=$('#toggleExamList');if(examToggleBtn)examToggleBtn.onclick=()=>{state.studentExamExpand=!state.studentExamExpand;renderStudentDetail(id);};drawScoreChart(s,trendRecords);$('#toggleScoreMode').onclick=()=>{state.scoreChartMode=scoreChartMode()==='raw'?'rate':'raw';renderStudentDetail(id);};$('#viewScoreChart').onclick=()=>openScoreChart(records);$('#downloadScoreChartInline').onclick=()=>{const canvas=$('#scoreChart');const link=document.createElement('a');link.download='成绩趋势图.png';link.href=canvas.toDataURL('image/png');link.click();};
 }
 
 function bindStudentActions(){
