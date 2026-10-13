@@ -306,8 +306,10 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
 .question-del:hover { border-color:var(--danger); background:#fde8e7; }
 /* 高度由 JS 按实际内容行数设置（空 → 1 行，最多 12 行）；行高固定 21px 便于换算 */
 .question-text { grid-column:2; width:100%; min-height:39px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; background:#fff; color:var(--ink); font:inherit; font-size:14px; line-height:21px; resize:none; box-sizing:border-box; }
-/* 备份与恢复面板：只放“立即备份 / 取消”两个按钮 */
+/* 备份与恢复面板：立即备份 + 导入备份文件 */
 .backup-actions > * { flex:1 1 0; min-width:130px; }
+/* “导入备份文件”用 label 包住隐藏的 file 输入，外观与按钮一致 */
+.restore-label { display:inline-flex; align-items:center; justify-content:center; text-align:center; min-height:42px; border-radius:7px; padding:10px 14px; font-weight:700; cursor:pointer; }
 /* 设置项旁边的小问号：点开该设置项的说明弹窗 */
 .field-help { flex:0 0 auto; width:20px; height:20px; min-height:0; padding:0; border:1px solid var(--line); border-radius:50%; background:#fff; color:var(--muted); font-size:12px; font-weight:700; line-height:1; cursor:pointer; }
 .field-help:hover, .field-help:focus { border-color:var(--teal); color:var(--teal); }

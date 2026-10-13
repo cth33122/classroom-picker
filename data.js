@@ -48,10 +48,36 @@ ${result.warnings.length?`<p class="hint danger-text">提示：${result.warnings
 </div>`;
 }
 
-async function handleRestore(e){const file=e.target.files[0],input=e.target;
+const BACKUP_KEYS=['students','history','settings','absences','meta','exams','examResults','seats'];
+// 备份文件里可能带音频等未知字段；只挑本程序认得的表恢复，其余忽略
+function pickBackup(data){const out={};BACKUP_KEYS.forEach(k=>{out[k]=Array.isArray(data[k])?data[k]:[];});return out;}
+async function handleRestore(e){
+  const file=e.target.files[0],input=e.target;
   if(!file)return;
   if(importBusy){input.value='';toast('正在保存成绩，请稍候');return;}
-  try{const data=JSON.parse(await file.text());if(!data||!Array.isArray(data.students)||!Array.isArray(data.history))throw new Error('备份文件结构不完整');if(!confirm('恢复备份会覆盖当前本地数据，确定继续吗？'))return;importBusy=true;try{for(const key of ['students','history','settings','absences','meta','exams','examResults','seats'])await DB.replace(key,Array.isArray(data[key])?data[key]:[]);await refreshAfterDataImport();toast('备份已恢复');}finally{importBusy=false;}}catch(err){toast(`恢复失败：${err.message}`);}finally{input.value='';}}
+  try{
+    const raw=await file.text();
+    let data=null;
+    try{data=JSON.parse(raw);}catch(err){throw new Error('不是有效的 JSON 文件，请确认选的是本程序导出的备份');}
+    const looksLikeBackup=data&&typeof data==='object'&&BACKUP_KEYS.some(k=>Array.isArray(data[k]));
+    if(!looksLikeBackup)throw new Error('备份文件结构不完整（缺少学生/点名记录等数据表）');
+    const counts=BACKUP_KEYS.map(k=>({k,n:Array.isArray(data[k])?data[k].length:0}));
+    const summary=counts.filter(x=>x.n).map(x=>`${x.k}=${x.n}`).join('、')||'全部为空';
+    const ver=Number(data.version)||1;
+    const verNote=ver>3?`\n\n注意：该备份版本较新（v${ver}），本程序可能不认识其中的新增字段。`:'';
+    if(!confirm(`用备份文件覆盖本机数据？\n\n${new Date(file.lastModified||Date.now()).toLocaleString()} 的文件\n包含：${summary}\n\n当前数据会被替换，此操作不可撤销。${verNote}`))return;
+    importBusy=true;
+    const picked=pickBackup(data);
+    for(const key of BACKUP_KEYS)await DB.replace(key,picked[key]);
+    await refreshAfterDataImport();
+    toast(`备份已恢复：${summary}`);
+  }catch(err){
+    toast(`恢复失败：${err.message}`);
+  }finally{
+    importBusy=false;
+    input.value='';   // 允许再次选择同一个文件
+  }
+}
 
 async function clearAll(){if(importBusy){toast('正在保存，请稍候');return;}if(!confirm('确定清除全部学生、考试、历史和设置吗？此操作不可撤销。'))return;for(const key of ['students','history','settings','absences','meta','exams','examResults','seats'])await DB.clear(key);state.currentClass='';state.candidates=[];await refreshAfterDataImport();toast('本地数据已清除');}
 
@@ -167,9 +193,9 @@ function renderData(){
 <h2>备份与恢复</h2>\
 <div class="actions backup-actions">\
 <button class="primary" id="backupNowBtn">立即备份</button>\
-<button class="secondary" id="backupCancelBtn">取消</button>\
+<label class="secondary restore-label">导入备份文件<input id="backupInput" type="file" accept=".json,application/json" hidden></label>\
 </div>\
-<p class="hint">点“立即备份”会立刻下载一个备份文件，包含学生、成绩、点名记录与座位表；点“取消”则不做任何操作。</p>\
+<p class="hint">“立即备份”会立刻下载一个备份文件，包含学生、成绩、点名记录（含评价与问题）、座位表与设置；“导入备份文件”用备份文件覆盖本机数据（操作前会再确认一次）。</p>\
 </div>\
 <div class="panel">\
 <h2>清除数据</h2>\
@@ -177,5 +203,5 @@ function renderData(){
 <button class="danger" id="clearBtn">清除全部本地数据</button>\
 </div>`;
     
-  $('#xlsxInput')?.addEventListener('change',handleImport);$('#downloadTemplateBtn')?.addEventListener('click',downloadGradeTemplate);$('#backupNowBtn')?.addEventListener('click',exportBackup);$('#backupCancelBtn')?.addEventListener('click',()=>{const p=$('#backupPanel');if(p)p.hidden=true;toast('已取消备份，没有下载任何文件');});$('#clearBtn')?.addEventListener('click',clearAll);$$('[data-open-exam]').forEach(b=>b.onclick=()=>openExamEditor(b.dataset.openExam));
+  $('#xlsxInput')?.addEventListener('change',handleImport);$('#downloadTemplateBtn')?.addEventListener('click',downloadGradeTemplate);$('#backupNowBtn')?.addEventListener('click',exportBackup);$('#backupInput')?.addEventListener('change',handleRestore);$('#clearBtn')?.addEventListener('click',clearAll);$$('[data-open-exam]').forEach(b=>b.onclick=()=>openExamEditor(b.dataset.openExam));
 }
