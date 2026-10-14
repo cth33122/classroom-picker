@@ -770,7 +770,12 @@ function trimEmptyEdges(grid){
   return first<=last?grid.slice(first,last+1):grid;
 }
 function analyzeSeatGrid(grid){
+  // rowBase/rowMap：记住每一排对应到原始 Excel 的第几行，这样提示里的行号才是老师能在原表里找到的那一行
+  let rowBase=0;
+  while(rowBase<grid.length&&!grid[rowBase].some(c=>c))rowBase++;
+  if(rowBase>=grid.length)rowBase=0;
   grid=trimEmptyEdges(grid);
+  let rowMap=grid.map((_,i)=>i+rowBase);
   const height=grid.length,width=height?grid[0].length:0;
   const roster=seatClassStudents();
   const byName=new Map();
@@ -790,6 +795,7 @@ function analyzeSeatGrid(grid){
   let sideL=null,sideR=null;
   if(flipRows){
     grid=grid.slice().reverse();   // 只上下镜像：行倒过来，列序保持（列不能再镜像，否则左右会反）
+    rowMap=rowMap.slice().reverse();   // 行号表跟着一起倒，提示里的“原表第 N 行”才不会报反
     const why=podiumBottom?'讲台/黑板标在表格最后一行（视为第 1 排）'
       :podiumTop?'讲台/黑板标在表格第一行'
       :(groupBottom?'表格没写讲台，但组别名在最后一行，按讲台同侧处理'
@@ -815,10 +821,19 @@ function analyzeSeatGrid(grid){
   // 名单命中 ≥SEAT_COL_MIN_NAMES 人 → 座位列；整列空白 → 大组之间的空列；其余 → 组别/方位标记列、或人不齐
   const kept=cols.filter(x=>x.names>=SEAT_COL_MIN_NAMES).map(x=>x.index);
   let dropped=cols.filter(x=>x.names<SEAT_COL_MIN_NAMES);
-  // 保底：如果这么一砍就没剩几列，说明名单没对上（而不是表格有问题），宁可整表保留
+  // 保底：如果这么一砍就没剩几列，说明名单没对上（而不是表格有问题），宁可整表保留。
+  // 但“整列一个字都没写”的列、“整排都没写内容（或只写着组别名/讲台/门）”的排，
+  // 不可能是座位，一律去掉——否则座位表里会冒出一整排空格子（老师明确反馈过这个问题）。
   if(!kept.length||kept.length<Math.max(2,Math.ceil(width*0.3))){
-    notes.push({msg:'有 '+dropped.length+' 列对不上班内名单，为避免误删已保留整张表（'+width+' 列）。请先确认这个班的名单已导入，或在导入窗口里改“表格方向”后重试',kind:'info'});
-    return {flipRows,cols:width,rows:height,grid,sideL,sideR,matched:countSeatNames(grid),keptCols:width,dropped:[],notes};
+    const liveCols=cols.filter(x=>!x.empty).map(x=>x.index);
+    const base=liveCols.length?grid.map(row=>liveCols.map(c=>row[c])):grid;
+    const seatLike=row=>row.some(c=>c&&!isSeatLabelCell(c)&&!seatMarker(c));
+    const rowsKept=base.filter(seatLike);
+    const fallback=rowsKept.length?rowsKept:base;
+    note('有 '+dropped.length+' 列对不上班内名单，为避免误删已保留整张表。请先确认这个班的名单已导入，或在导入窗口里改“表格方向”后重试；在此之前，座位表里会有人名落不了座','info');
+    if(liveCols.length&&liveCols.length<width)note('另外去掉了 '+(width-liveCols.length)+' 个整列空白的列（大组之间的空列不算座位）','empty');
+    if(base.length-fallback.length)note('去掉了 '+(base.length-fallback.length)+' 个空白排（含只写着组别名/讲台之类的排）：学生之间不留空排','empty');
+    return {flipRows,cols:fallback[0]?fallback[0].length:0,rows:fallback.length,grid:fallback,sideL,sideR,matched:countSeatNames(fallback),keptCols:fallback[0]?fallback[0].length:0,dropped:[],notes};
   }
   const empties=dropped.filter(x=>x.empty);
   if(empties.length)note('忽略 '+empties.length+' 个整列空白的列（大组之间的空列不再算作一整组）','empty');
@@ -839,16 +854,28 @@ function analyzeSeatGrid(grid){
     });
   });
   const droppedIndexes=dropped.map(x=>x.index);
-  let finalGrid=grid.map(row=>kept.map(c=>row[c]));
-  // 只作为“门/窗/组别”存在的边界行不算排：去掉首尾没有座位姓名的行
+  const finalGrid=grid.map(row=>kept.map(c=>row[c]));
+  // 剔除空白行：Excel 里经常在排与排之间留空行（尤其学生之间），
+  // 这些行不代表座位，留下来会把排数算多、并在座位表里插入空排。
+  // 判定"空白"= 该行没有任何能对上班内名单的姓名；只写着门/窗/组别的行同样不算排。
   const isSeatRow=row=>row.some(c=>c&&byName.has(c));
-  let first=0,last=finalGrid.length-1;
-  while(first<=last&&!isSeatRow(finalGrid[first]))first++;
-  while(last>=first&&!isSeatRow(finalGrid[last]))last--;
-  const trimmed=first<=last?finalGrid.slice(first,last+1):finalGrid;
+  const hasAnyText=row=>row.some(c=>c&&String(c).trim());
+  const blankRows=[],lostRows=[];
+  const seatRows=[];
+  finalGrid.forEach((row,index)=>{
+    if(isSeatRow(row))seatRows.push(row);
+    else if(hasAnyText(row))lostRows.push(index);
+    else blankRows.push(index);
+  });
+  const trimmed=seatRows.length?seatRows:finalGrid;
+  if(blankRows.length)note('忽略了 '+blankRows.length+' 个空白行'+(blankRows.length<=8?'（原表第 '+(blankRows.map(i=>rowMap[i]+1).join('、'))+' 行）':'')+'：学生之间不留空排','empty');
+  lostRows.forEach(i=>{
+    const sample=finalGrid[i].filter(Boolean).slice(0,3).join('、');
+    note('原表第 '+(rowMap[i]+1)+' 行有内容但一个姓名都对不上班内名单'+(sample?'（内容：'+sample+'）':'')+'，已按空行跳过；如果这行确实是学生，请检查名单是否已导入或该行是否与其它行错位','sparse');
+  });
   const matched=countSeatNames(trimmed)-strayNames.length;
   strayNames.forEach(s=>{
-    note('“'+s.name+'”在原表第 '+(s.row+1)+' 行、第 '+(s.col+1)+' 列——这是'+(s.empty?'大组之间的分隔列':'一个不成组的列')+'，说明这一行与其他行对不齐（多半是多写或漏写了一格）。已保持空位，请导入后在“编辑座位”里把它放到正确位置','sparse');
+    note('“'+s.name+'”在原表第 '+(rowMap[s.row]+1)+' 行、第 '+(s.col+1)+' 列——这是'+(s.empty?'大组之间的分隔列':'一个不成组的列')+'，说明这一行与其他行对不齐（多半是多写或漏写了一格）。已保持空位，请导入后在“编辑座位”里把它放到正确位置','sparse');
   });
   note('识别结果：'+kept.length+' 列 × '+trimmed.length+' 排，与班内名单核对上 '+matched+' 人'+(strayNames.length?'（另有 '+strayNames.length+' 人位置对不齐，见上）':''),'info');
   return {flipRows,cols:kept.length,rows:trimmed.length,grid:trimmed,sideL,sideR,matched,keptCols:kept.length,dropped:droppedIndexes,strayNames,notes};
@@ -987,8 +1014,11 @@ function showSeatImportResult(normalized,result){
   $('#seatImportResult')?.remove();
   const info=normalized.info||{};
   const matched=info.matched!==undefined?info.matched:result.placed;
-  const stats='识别为 '+normalized.cols+' 列 × '+normalized.rows+' 排，'+matched+' 人与班内名单对上（共安排 '+result.placed+' 个座位）';
+  const ver=typeof APP_VERSION!=='undefined'?'（版本 '+APP_VERSION+'）':'';
+  const stats='识别为 '+normalized.cols+' 列 × '+normalized.rows+' 排，'+matched+' 人与班内名单对上（共安排 '+result.placed+' 个座位）'+ver;
   const notes=(info.notes||[]).map(n=>'<li class="seat-import-note '+esc(n.kind||'info')+'">'+esc(n.msg)+'</li>').join('');
+  // 一个人名都没对上：多半是这个班的名单还没导入（座位会全是空的），必须说清楚
+  const noMatch=matched?'':'<p class="hint"><strong>注意：一个姓名都没对上班内名单。</strong>请先在“成绩导入”里导入这个班的名单，再来导入座位表。</p>';
   const unmatched=result.unmatched&&result.unmatched.length
     ?'<p class="hint"><strong>没对上班内名单的单元格：</strong>'+esc(result.unmatched.slice(0,12).join('、'))+(result.unmatched.length>12?' 等 '+result.unmatched.length+' 个':'')+'<br>这些单元格保持空位，可用“按名册填充”或手动落座补齐。</p>'
     :'<p class="hint">没有出现对不上名单的名字。</p>';
@@ -997,6 +1027,7 @@ function showSeatImportResult(normalized,result){
   modal.innerHTML='<div class="modal-card seat-import-card" role="dialog" aria-modal="true">'
     +'<div class="modal-header"><h2>导入完成</h2><button class="icon-button modal-close" aria-label="关闭">×</button></div>'
     +'<p class="seat-import-stats">'+esc(stats)+'</p>'
+    +noMatch
     +(notes?'<ul class="seat-import-notes">'+notes+'</ul>':'')
     +unmatched
     +(result.hint?'<p class="hint">'+esc(result.hint)+'</p>':'')
@@ -1053,7 +1084,7 @@ function openSeatImport(){
 <input id="seatImportFile" type="file" accept=".xlsx,.csv,.txt"></div>\
 <div class="field"><label>或直接粘贴表格（每行一排，用 Tab/逗号分隔）</label>\
 <textarea id="seatImportText" rows="6" placeholder="第一组&#9;&#9;第二组&#10;张三&#9;&#9;李四&#10;王五&#9;&#9;赵六"></textarea></div>\
-<p class="hint"><strong>会自动识别：</strong>大组之间的空列不算座位（不再把空列当成一整组）；“第一组 / 讲台 / 门 / 过道”等标记不会当成姓名；一列里能对上班内名单的姓名少于 ${SEAT_COL_MIN_NAMES} 人时不作为座位列。识别到讲台在表格上方时，整表旋转 180°（讲台对齐下方，靠近讲台的学生依然靠近讲台）。</p>\
+<p class="hint"><strong>会自动识别：</strong>排与排之间的空白行会被忽略（学生和学生之间不会留出空排，只写着“门/窗/第一组”的行也不算一排）；大组之间的空列不算座位（不再把空列当成一整组）；“第一组 / 讲台 / 门 / 过道”等标记不会当成姓名；一列里能对上班内名单的姓名少于 ${SEAT_COL_MIN_NAMES} 人时不作为座位列。识别到讲台在表格上方时，把各排上下对调（讲台对齐下方，靠近讲台的学生依然靠近讲台）。</p>\
 <p class="hint">姓名一律用已导入的本班名单核对，所以请先导入学生成绩/名单。另支持清单式表格（表头含 列 / 排 / 姓名）。</p>\
 <div class="actions"><button class="primary" id="seatImportPasteBtn">导入粘贴内容</button></div>\
 </div>`;
