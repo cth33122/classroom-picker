@@ -1,7 +1,7 @@
 // 入口：视图分发、数据加载、service worker 注册
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v161';
+const APP_VERSION = 'v167';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -72,6 +72,7 @@ function render(){
 
 async function reload(){
   [state.students,state.history,state.absences,state.exams,state.examResults]=await Promise.all([DB.all('students'),DB.all('history'),DB.all('absences'),DB.all('exams'),DB.all('examResults')]);
+  state.photos=await loadPhotos();   // 学生头像（Blob），只在需要显示时才生成 objectURL
   state.students.forEach(s=>{s.className=normalizeClassName(s.className);s.id=s.id||`${s.className}-${s.name}`;});
   state.examResults.forEach(r=>{if(r.result){r.result.className=normalizeClassName(r.result.className);r.identityKey=r.identityKey||`${r.result.className}-${r.result.name}`;}});
   for(const exam of state.exams){const storedTotal=Number(exam.totalScore);if(Number.isFinite(storedTotal)&&storedTotal>100)continue;const max=Math.max(...state.examResults.filter(r=>r.examId===exam.id).map(r=>Number(r.result?.score)||0),0);if(max>100){exam.totalScore=[120,150,160,180,200].find(n=>max<=n)||Math.ceil(max/10)*10;await DB.put('exams',exam);}}
@@ -81,6 +82,8 @@ async function reload(){
   const savedClass=normalizeClassName(meta.find(x=>x&&x.id==='currentClass')?.value||'');
   // 恢复座位表色阶选择（刷新/重开后仍保持原来的选择）
   state.seatColorMode=seatColorModeValue(meta.find(x=>x&&x.id==='seatColorMode')?.value||'none');
+  // 恢复“座位表是否收起”（收起时候选头像会放大，刷新后不用每次再收一遍）
+  state.seatCollapsed=meta.find(x=>x&&x.id==='seatCollapsed')?.value===true;
   const available=classes();
   const wanted=[state.currentClass,savedClass].filter(Boolean).map(v=>normalizeClassName(v)).find(v=>available.includes(v));
   state.currentClass=wanted||available[0]||'';

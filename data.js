@@ -79,7 +79,17 @@ async function handleRestore(e){
   }
 }
 
-async function clearAll(){if(importBusy){toast('正在保存，请稍候');return;}if(!confirm('确定清除全部学生、考试、历史和设置吗？此操作不可撤销。'))return;for(const key of ['students','history','settings','absences','meta','exams','examResults','seats'])await DB.clear(key);state.currentClass='';state.candidates=[];await refreshAfterDataImport();toast('本地数据已清除');}
+// 头像包（zip）：交给 photos.js 解析与写入；这里只管忙碌状态与报错
+async function handleAvatarZipImport(e){
+  const file=e.target.files[0],input=e.target;
+  if(!file)return;
+  if(importBusy){input.value='';toast('正在保存成绩，请稍候');return;}
+  importBusy=true;
+  try{await importAvatarPackage(file);}
+  catch(err){toast('导入头像失败：'+(err.message||'未知错误'));}
+  finally{importBusy=false;input.value='';}
+}
+async function clearAll(){if(importBusy){toast('正在保存，请稍候');return;}if(!confirm('确定清除全部学生、考试、历史和设置吗？此操作不可撤销。\n（学生头像也会一起清掉，需要的话请先导出头像包。）'))return;for(const key of ['students','history','settings','absences','meta','exams','examResults','seats','photos'])await DB.clear(key);state.currentClass='';state.candidates=[];await refreshAfterDataImport();toast('本地数据已清除');}
 
 async function savePendingExams(){
   const pending=state.pendingImport;
@@ -197,6 +207,15 @@ function renderData(){
 </div>\
 <p class="hint">“立即备份”会立刻下载一个备份文件，包含学生、成绩、点名记录（含评价与问题）、座位表与设置；“导入备份文件”用备份文件覆盖本机数据（操作前会再确认一次）。</p>\
 </div>\
+<div class="panel" id="avatarPanel">\
+<h2>学生头像</h2>\
+<div class="data-import-actions">\
+<label class="secondary restore-label">导入头像包（zip）<input id="avatarZipInput" type="file" accept=".zip,application/zip" hidden></label>\
+<button class="secondary" id="avatarManifestBtn">下载本班头像清单模板</button>\
+</div>\
+<p class="hint">头像包就是一个 zip：照片放进去，再放一份 <strong>manifest.csv</strong>（列：班级、学号、姓名、文件名）说明谁是谁。不想写清单也行——照片文件名里带学号或姓名（如 <code>20260101.jpg</code>、<code>张三.jpg</code>、<code>张三_头像.jpg</code>）会自动对上。导入时统一压成 ${AVATAR_SIZE}×${AVATAR_SIZE} 的 JPEG，存本机。</p>\
+<p class="hint">只给个别学生设置：到“学生”页点开他，点头像（或“设置头像”链接）即可拍照或选图，并能拖动、缩放裁剪。当前本机已存 ${photoCount()} 张头像；头像存在本机，<strong>不包含</strong>在“立即备份”的 JSON 里。</p>\
+</div>\
 <div class="panel">\
 <h2>清除数据</h2>\
 <p class="hint danger-text">清除后无法从本机恢复，请先导出备份。</p>\
@@ -204,4 +223,5 @@ function renderData(){
 </div>`;
     
   $('#xlsxInput')?.addEventListener('change',handleImport);$('#downloadTemplateBtn')?.addEventListener('click',downloadGradeTemplate);$('#backupNowBtn')?.addEventListener('click',exportBackup);$('#backupInput')?.addEventListener('change',handleRestore);$('#clearBtn')?.addEventListener('click',clearAll);$$('[data-open-exam]').forEach(b=>b.onclick=()=>openExamEditor(b.dataset.openExam));
+  $('#avatarZipInput')?.addEventListener('change',handleAvatarZipImport);$('#avatarManifestBtn')?.addEventListener('click',downloadAvatarManifest);
 }

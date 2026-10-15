@@ -326,3 +326,46 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
 /* 设置页“数据重置”：两个按钮同一行并排 */
 .reset-actions { display:flex; flex-wrap:wrap; gap:8px; }
 .reset-actions > * { flex:1 1 0; min-width:118px; }
+/* ---------- 学生头像 ---------- */
+.avatar { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:var(--avatar-size,28px); height:var(--avatar-size,28px); padding:0; border:1px solid transparent; border-radius:50%; overflow:hidden; background:hsl(var(--avatar-hue,190),40%,88%); color:var(--teal); font-weight:800; font-size:calc(var(--avatar-size,28px) * .42); line-height:1; }
+.avatar-img { display:block; width:100%; height:100%; object-fit:cover; }
+.avatar-initial { transform:translateY(1px); }
+.avatar-empty { border-style:dashed; border-color:rgba(15,118,110,.45); }
+button.avatar { cursor:pointer; }
+button.avatar:hover { border-color:var(--teal); }
+.avatar-note { color:var(--muted); font-size:12px; }
+.student-main { display:flex; align-items:center; gap:8px; }
+.student-main-text { flex:1 1 auto; min-width:0; }
+.candidate { justify-content:flex-start; }
+.candidate-main { flex:1 1 auto; min-width:0; }
+/* 候选卡信息压成一行：班次 / 点名，两个数据就够，不再显示得分率 */
+.candidate-meta { display:flex; flex-wrap:wrap; gap:2px 12px; margin-top:2px; }
+.candidate-result-who { flex:1 1 auto; min-width:0; }
+.candidate-result-who strong { display:block; font-size:20px; }
+/* 头像设置菜单与裁剪窗 */
+.avatar-menu-card { width:min(420px,100%); }
+.avatar-menu-actions > * { flex:1 1 auto; }
+.avatar-crop-card { width:min(440px,100%); }
+.avatar-crop-view { position:relative; overflow:hidden; width:var(--crop-size,260px); height:var(--crop-size,260px); margin:0 auto; border-radius:14px; background:rgba(15,118,110,.06); box-shadow:inset 0 0 0 1px var(--line); touch-action:none; cursor:grab; }
+.avatar-crop-view:active { cursor:grabbing; }
+.avatar-crop-view img { position:absolute; left:50%; top:50%; max-width:none; transform-origin:center center; user-select:none; -webkit-user-drag:none; pointer-events:none; }
+.avatar-crop-tools { display:flex; align-items:center; gap:10px; margin-top:12px; }
+.avatar-zoom { display:flex; flex:1 1 auto; align-items:center; gap:8px; color:var(--muted); font-size:13px; }
+.avatar-zoom input { flex:1 1 auto; min-width:80px; accent-color:var(--teal); }
+.avatar-progress { height:10px; margin:12px 0 6px; border-radius:999px; background:var(--mint); overflow:hidden; }
+.avatar-progress span { display:block; height:100%; width:0; background:var(--teal); transition:width .2s ease; }
+.avatar-progress-card h2 { margin:0 0 4px; }
+/* ---------- 点名页：座位表可收起 + 侯选头像分档 ---------- */
+.rollcall-body > .seat-panel.is-collapsed { flex:0 0 auto; }
+.rollcall-body > .seat-panel.is-collapsed .seat-panel-head { margin-bottom:0; }
+.seat-panel-title { cursor:pointer; user-select:none; }
+.seat-panel-title:hover { color:var(--teal); }
+.seat-caret { color:var(--muted); font-size:12px; }
+.candidate-list.is-roomy { max-height:56vh; }
+/* 只有一名候选 / 两名候选：竖排大卡（上头像下姓名），头像由 --cand-avatar 自动算 */
+.candidate-tall, .candidate-single { flex-direction:column; align-items:center; justify-content:center; gap:8px; text-align:center; padding:14px 10px; }
+.candidate-tall strong { font-size:20px; }
+.candidate-tall .candidate-meta { justify-content:center; font-size:13px; }
+.candidate-single { box-shadow:inset 0 0 0 1px var(--mint); }
+.candidate-single .avatar { box-shadow:0 0 0 3px var(--mint); }
+

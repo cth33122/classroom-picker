@@ -1,5 +1,13 @@
 // 点名页：候选取人、点名落库、缺席标记
 
+// 候选卡头像：渲染后按“卡片真实宽度 + 列表可用高度”自动算能放多大，夹在 [下限, 上限] 之间。
+// 只有点名页用这套：座位表展开时纵向紧张，1 人 / 多人用横排（头像在左）省高度；2 人用竖排大卡。
+const CAND_AVATAR_MIN=38;              // 老师反馈过太小，任何情况下都不小于它
+const CAND_AVATAR_MAX_TALL=104;        // 竖排大卡（头像在上）的上限
+const CAND_AVATAR_MAX_ROW=96;          // 横排卡（头像在左）的上限
+const CAND_AVATAR_TEXT_RESERVE=96;     // 横排时留给“姓名 + 班次/点名”的横向空间
+const CAND_AVATAR_SIZE='var(--cand-avatar,38px)';   // 首帧先用下限，refitCandidateAvatars 随后写真实值
+
 
 
 function recommend(){state.settings.currentDifficulty=state.difficulty;const currentExam=orderedExams()[0];const pool=state.students.filter(s=>s.className===state.currentClass).map(s=>({...s,...(examResult(currentExam,s)||{}),scoreRate:averageScoreRate(s)}));state.candidates=chooseCandidates(pool,state.history,state.absences,{...state.settings,currentDifficulty:state.difficulty});renderRollcall();}
@@ -24,6 +32,61 @@ function refreshCandidatesAfterSettings(){
   recommend();
 }
 
+// 候选卡排版：2 人竖排大卡（上头像下姓名）；1 人在座位表展开时用横排（省纵向高度）；
+// 座位表收起/未安排座位时 1 人做成竖排单人卡；3 人以上横排紧凑。
+function candidateLayout(count,seatShown){
+  if(count===1)return {cols:1,tall:!seatShown};
+  if(count===2)return {cols:2,tall:true};
+  return {cols:seatShown?(count%2===0?2:3):2,tall:false};
+}
+// 按“卡片真实宽度 + 候选列表能分到的高度”算头像能放多大，写回 --cand-avatar。
+// 座位表展开时**先满足座位图完整显示**：把除候选列表以外（含座位图所需完整高度）的占用都扣掉，
+// 剩下的才是候选列表的额度；额度不够就把头像一档档压小，但绝不低于 CAND_AVATAR_MIN。
+// 用渲染后的真实尺寸量，所以换机、转屏、横竖屏都会自动跟着变；量不到就用 CSS 默认高度和下限 38px。
+function refitCandidateAvatars(){
+  const list=$('#view-rollcall .candidate-list');
+  if(!list)return;
+  const cards=list.querySelectorAll('.candidate');
+  const listW=list.clientWidth;
+  if(!listW||!cards.length)return;
+  const cols=Math.max(1,Math.round(Number(list.style.getPropertyValue('--cand-cols'))||1));
+  const rows=Math.max(1,Math.ceil(cards.length/cols));
+  const gap=10,padV=Number(getComputedStyle(cards[0]).paddingTop.replace('px',''))||10;
+  const tall=cards[0].classList.contains('candidate-tall');
+  const minCardH=(tall?CAND_AVATAR_MIN+48:CAND_AVATAR_MIN)+padV*2;   // 用下限尺寸时一张卡至少要多高
+  const body=document.querySelector('#view-rollcall .rollcall-body');
+  const chart=document.querySelector('#view-rollcall .seat-chart');
+  const chartPanel=chart?chart.closest('.seat-panel'):null;
+  const panel=list.closest('.panel');
+  let maxH=0;
+  if(body&&body.clientHeight>=200&&chart&&chartPanel&&panel){
+    // 座位表展开：统计“其它部分”占掉的高度——座位面板按“座位图完整显示”算，候选面板只算列表之外的部分
+    let occupied=0;
+    [...body.children].forEach(el=>{
+      const cs=getComputedStyle(el);
+      let h=el.offsetHeight;
+      if(el===panel)h=Math.max(0,h-list.offsetHeight);
+      if(el===chartPanel)h=Math.max(0,h-chart.clientHeight)+chart.scrollHeight;
+      occupied+=h+(parseFloat(cs.marginTop)||0)+(parseFloat(cs.marginBottom)||0);
+    });
+    maxH=Math.max(rows*minCardH,body.clientHeight-occupied);   // 再挤也不让卡片低于“下限头像”所需高度
+    list.style.maxHeight=Math.round(maxH)+'px';
+  }else{
+    list.style.removeProperty('max-height');   // 座位表没展开：交回 CSS（收起时 56vh、未安排座位时同样）
+    maxH=parseFloat(getComputedStyle(list).maxHeight)||Math.round((window.innerHeight||640)*0.32);
+  }
+  const perCard=(maxH-gap*(rows-1))/rows;
+  const cardW=(listW-gap*(cols-1))/cols;
+  // 竖排：头像独占一行，只需扣掉卡片上下内边距和下面两行文字；横排：还要给右边文字留出宽度
+  const byWidth=tall?cardW-padV*2:cardW-CAND_AVATAR_TEXT_RESERVE;
+  const byHeight=tall?perCard-padV*2-48:perCard-padV*2;
+  const size=Math.round(Math.max(CAND_AVATAR_MIN,Math.min(tall?CAND_AVATAR_MAX_TALL:CAND_AVATAR_MAX_ROW,byWidth,byHeight)));
+  list.style.setProperty('--cand-avatar',size+'px');
+}
+// 转屏 / 窗口尺寸变化后重新算一次（列表不在时函数自己会返回）
+window.addEventListener('resize',()=>{requestAnimationFrame(refitCandidateAvatars);});
+window.addEventListener('orientationchange',()=>{setTimeout(refitCandidateAvatars,120);});
+
 function renderRollcall(){
   // 当前班级的座位表尚未加载时，先异步取一次再重绘
   if(state.currentClass&&state.seatClass!==state.currentClass&&!state.seatLoading){
@@ -35,13 +98,12 @@ function renderRollcall(){
   const liveOf=c=>state.students.find(x=>x.id===c.student.id)||c.student;
   const visible=state.candidates.filter(c=>c.student.id===state.selectedCandidate||!liveOf(c).noCall);
   const emptyText=state.candidates.length?(visible.length?'':'候选中的学生都已被标记为“不参与点名”。'):'选择难度后生成候选';
-  // 候选列数：偶数用 2 列、奇数用 3 列（窄屏会因最小卡片宽度自动降为更少列）
-  const candCols=visible.length<=1?1:(visible.length%2===0?2:3);
-  // 座位表：无人入座时折叠成一条提示，安排座位后自动展开启用
+  // 座位表：无人入座时折叠成一条提示；有人入座时可以点“座位表”标题收起/展开，收起后候选头像自动放大
   const seatedCount=state.seatLayout?state.seatLayout.seats.filter(s=>s.studentId).length:0;
-  const seatPanel=seatedCount>0?`<div class="panel seat-panel">\
+  const seatCollapsed=Boolean(state.seatCollapsed);
+  const seatPanel=seatedCount>0?`<div class="panel seat-panel${seatCollapsed?' is-collapsed':''}">\
 <div class="seat-panel-head">\
-<h3>座位表</h3>\
+<h3 class="seat-panel-title" id="seatPanelToggle" title="${seatCollapsed?'点击展开座位表':'点击收起座位表'}">座位表 <span class="seat-caret" aria-hidden="true">${seatCollapsed?'▸':'▾'}</span></h3>\
 <div class="seat-panel-actions">\
 <select id="seatColorMode" class="seat-color-select" title="座位着色" aria-label="座位着色模式">\
 <option value="none">不上色</option>\
@@ -51,7 +113,7 @@ function renderRollcall(){
 <button class="secondary seat-edit-btn" id="editSeatBtn">编辑座位</button>\
 </div>\
 </div>\
-${seatChartHtml(seatFitCtxFor('roll'))}\
+${seatCollapsed?'<p class="hint">座位表已收起，候选头像已放大；点上面的“座位表”即可展开。</p>':seatChartHtml(seatFitCtxFor('roll'))}\
 </div>`:`<div class="panel seat-panel seat-panel-collapsed">\
 <div class="seat-panel-head">\
 <h3>座位表</h3>\
@@ -61,6 +123,8 @@ ${seatChartHtml(seatFitCtxFor('roll'))}\
 </div>\
 </div>\
 </div>`;
+  // 座位表没有占屏幕（未安排座位，或已收起）时，候选项用大一号的头像
+  const seatShown=seatedCount>0&&!seatCollapsed;
   // 已点名：只显示“点名结果卡”，它不再是可点按钮 —— 再点也不会重复写点名记录
   const resultCard=state.selectedCandidate?(function(){
     const live=state.students.find(x=>x.id===state.selectedCandidate);
@@ -70,7 +134,10 @@ ${seatChartHtml(seatFitCtxFor('roll'))}\
     const rec=latestCallRecord(live.id);
     return `<div class="candidate-result" data-result-student="${esc(live.id)}">\
 <div class="candidate-result-head">\
+${avatarHtml(live,{size:56,cls:'avatar-picked'})}\
+<div class="candidate-result-who">\
 <strong>${nameHtml(live,live.displayName||live.name)}</strong>${studentTags(live)}\
+</div>\
 <span class="candidate-result-diff">${['','简单','适中','困难'][state.difficulty]||''}</span>\
 </div>\
 <div class="candidate-result-meta">\
@@ -87,13 +154,28 @@ ${rec&&String(rec.question||'').trim()?`<button type="button" class="student-lin
 </div>`;
   })():'';
   const candidateArea=state.selectedCandidate?resultCard
-    :`<div class="candidate-list" style="--cand-cols:${candCols}">${visible.length?visible.map(c=>{const live=liveOf(c),avg=averageScoreRate(live),rank=rankMap.get(live.id);return `<button type="button" class="candidate" data-student="${esc(live.id)}">\
-<span>\
-<strong>${nameHtml(live,live.displayName||live.name)}${live.focus?' <span class="badge">关注</span>':''}</strong>\
-<small>${avg===null?'—':`${(avg*100).toFixed(1)}%`} · 班次 ${rank??'—'}</small>\
-<small class="candidate-meta">近期点名次数：${c.recentCount}</small>\
+    :(function(){
+      const layout=candidateLayout(visible.length,seatShown);
+      const cards=visible.map(c=>{
+        const live=liveOf(c),rank=rankMap.get(live.id);
+        const name=`${nameHtml(live,live.displayName||live.name)}${live.focus?' <span class="badge">关注</span>':''}`;
+        const meta=`<small class="candidate-meta"><span>班次 ${rank??'—'}</span><span>点名 ${c.recentCount}</span></small>`;
+        const cls='candidate'+(layout.tall?' candidate-tall':'')+(visible.length===1?' candidate-single':'');
+        if(layout.tall)return `<button type="button" class="${cls}" data-student="${esc(live.id)}">\
+${avatarHtml(live,{size:CAND_AVATAR_SIZE})}\
+<strong>${name}</strong>\
+${meta}\
+</button>`;
+        return `<button type="button" class="${cls}" data-student="${esc(live.id)}">\
+${avatarHtml(live,{size:CAND_AVATAR_SIZE})}\
+<span class="candidate-main">\
+<strong>${name}</strong>\
+${meta}\
 </span>\
-</button>`}).join(''):`<div class="empty">${emptyText}</div>`}</div>`;
+</button>`;
+      }).join('');
+      return `<div class="candidate-list${seatShown?'':' is-roomy'}" style="--cand-cols:${layout.cols}">${visible.length?cards:`<div class="empty">${emptyText}</div>`}</div>`;
+    })();
   $('#view-rollcall').innerHTML=`<div class="rollcall-body">\
 ${seatPanel}\
 ${seatedCount>0?'':'<div class="rollcall-gap"></div>'}\
@@ -116,6 +198,13 @@ ${candidateArea}${!state.selectedCandidate&&visible.length===0&&state.currentCla
 </div>\
 </div>`;
   $('#rulesBtn').onclick=()=>openRollcallRules();
+  // 点“座位表”标题收起/展开；收起后候选项会换成大头像，选择记在本机
+  const seatToggle=$('#seatPanelToggle');
+  if(seatToggle)seatToggle.onclick=()=>{
+    state.seatCollapsed=!state.seatCollapsed;
+    DB.put('meta',{id:'seatCollapsed',value:state.seatCollapsed}).catch(()=>{});
+    renderRollcall();
+  };
   $('#editSeatBtn').onclick=()=>openSeatEditor();
   $$('#view-rollcall [data-seat]').forEach(b=>b.onclick=()=>openStudentDetailFromSeat(b.dataset.seat));
   const seatColorSel=$('#seatColorMode');
@@ -129,6 +218,8 @@ ${candidateArea}${!state.selectedCandidate&&visible.length===0&&state.currentCla
   }
   refitSeats();
   requestAnimationFrame(refitSeats);
+  refitCandidateAvatars();
+  requestAnimationFrame(refitCandidateAvatars);
   $$('[data-difficulty]').forEach(b=>b.onclick=()=>{state.difficulty=Number(b.dataset.difficulty);state.selectedCandidate=null;recommend();});
   $$('#view-rollcall [data-student]').forEach(b=>b.onclick=()=>selectStudent(b.dataset.student));
   $$('#view-rollcall [data-rollcall-eval]').forEach(b=>b.onclick=()=>tapRollcallEval(b.dataset.rollcallEval));
