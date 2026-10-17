@@ -29,6 +29,13 @@ async function importGradeBooks(file){const sheets=await parseXlsx(file),fileSou
     const h=head.values,idx={};
     for(const key of Object.keys(GRADE_FIELDS))idx[key]=fieldIndex(h,GRADE_FIELDS[key],key==='score'?['率','%','满分']:[]);
     if(idx.name<0){warnings.push(`工作表“${sheet.name}”未找到姓名列，已跳过`);return;}
+    // 所有“编号类”列都抓出来：同一份表里可能同时有学号、考号（列名还可能是“自定义考号”等）。
+    // 按**最长的匹配词**取类型（避免“自定义考号”被当成“考号”），并归到“体系族”（学号 / 考号 / 其他编号）。
+    const idCols=h.map((v,i)=>{
+      const text=norm(v);
+      const token=ID_FIELD_TOKENS.filter(t=>text.includes(t)).sort((a,b)=>b.length-a.length)[0]||'';
+      return token?{index:i,type:token,family:idFamilyOf(token)}:{index:i,type:'',family:''};
+    }).filter(c=>c.type);
     const label=parseExamLabel(sheet.name),fromSheet=Boolean(label.date),source=fromSheet?{exercise:label.exercise||fileSource.exercise,date:label.date}:fileSource,key=fromSheet?`sheet:${source.exercise}|${source.date}`:'file';
     const group=groups.get(key)||{key,source,sheets:[],students:[],warnings:[],merged:false};groups.set(key,group);group.sheets.push(sheet);if(!fromSheet)group.merged=true;
     if(idx.class<0)group.warnings.push(`工作表“${sheet.name}”未找到班级列，已按“未分班”处理`);
@@ -36,7 +43,10 @@ async function importGradeBooks(file){const sheets=await parseXlsx(file),fileSou
     for(const row of sheet.rows.slice(head.index+1)){
       const name=norm(row[idx.name]);if(isPlaceholderName(name)){skippedName++;continue;}
       const examId=idx.id>=0?norm(row[idx.id]):'',score=idx.score>=0?num(row[idx.score]):null;
-      group.students.push({sourceExamId:isMissingId(examId)?'':examId,name,className:normalizeClassName(idx.class>=0?row[idx.class]:''),rawScore:score===null?0:Math.max(0,score),score:score===null?0:score,classRank:num(row[idx.classRank]),gradeRank:num(row[idx.gradeRank]),source:source.exercise,sourceDate:source.date,focus:false});
+      // 每个编号列的值都记下来（去占位值），带列名（type）与体系族（family）：
+      // 如 [{type:'学号',family:'学号',value:'20260101'},{type:'自定义考号',family:'考号',value:'A20317'}]
+      const ids=idCols.map(c=>({type:c.type,family:c.family,value:norm(row[c.index])})).filter(x=>x.value&&!isMissingId(x.value));
+      group.students.push({sourceExamId:isMissingId(examId)?'':examId,name,className:normalizeClassName(idx.class>=0?row[idx.class]:''),rawScore:score===null?0:Math.max(0,score),score:score===null?0:score,classRank:num(row[idx.classRank]),gradeRank:num(row[idx.gradeRank]),source:source.exercise,sourceDate:source.date,focus:false,ids});
     }
     if(skippedName)group.warnings.push(`工作表“${sheet.name}”有 ${skippedName} 行未识别到姓名，已跳过`);
   });

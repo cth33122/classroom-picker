@@ -1,6 +1,6 @@
 // 点名算法配置：难度区间使用班级位次分位数，不使用成绩率。
 const ALGORITHM_DEFAULTS = {
-  configVersion: 4, candidateCount: 4,
+  configVersion: 5, candidateCount: 4,
   recentDecay: 0.58, recoveryPerCall: 0.12, focusBoost: 1.65, basisExamCount: 3, historyRule: 'twoMonths', sameDayRepeat: 'block', lowScorePercentile: 0.60, zeroRecentBoost: 1.5, shortcutClasses: [],
   difficulty: {
     1: { minPercentile: 0.60, maxPercentile: 1.00 },
@@ -10,6 +10,13 @@ const ALGORITHM_DEFAULTS = {
 };
 // “近期点名次数”规则：设置页下拉与点名页说明共用同一份定义，保证两处文案一致。
 const HISTORY_RULE_OPTIONS = [['all','总计'],['calls20','近20次点名'],['calls30','近30次点名'],['calls50','近50次点名'],['week','近1周'],['twoWeeks','近2周'],['month','近1月'],['twoMonths','近2月'],['threeMonths','近3月'],['halfYear','近半年']];
+// 候选人数只允许这几个值（设置页是下拉，不能手动输入）；旧数据里的其它值一律“向上取到允许值”（3 → 4）
+const CANDIDATE_CHOICES = [1, 2, 4];
+function normalizeCandidateCount(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return ALGORITHM_DEFAULTS.candidateCount;
+  return CANDIDATE_CHOICES.find(a => n <= a) || CANDIDATE_CHOICES[CANDIDATE_CHOICES.length - 1];
+}
 const HISTORY_RULE_DAYS = { week:7, twoWeeks:14, month:30, twoMonths:60, threeMonths:90, halfYear:182 };
 function historyRuleLabel(rule) { const found = HISTORY_RULE_OPTIONS.find(([value]) => value === String(rule)); return found ? found[1] : '近2月'; }
 function historyRuleWindow(rule) {
@@ -22,6 +29,8 @@ function mergeConfig(saved) {
   let source = saved || {};
   // v3 → v4：默认候选人数由 3 改为 4。只跟随仍停留在旧默认值 3 的设置，用户手动改过的值不动。
   if (Number(source.configVersion || 0) < 4 && Number(source.candidateCount) === 3) source = { ...source, candidateCount: 4 };
+  // v4 → v5：候选人数改成只能选 1/2/4（下拉），历史遗留的其它数值统一向上取到允许值
+  if (Number(source.configVersion || 0) < 5) source = { ...source, candidateCount: normalizeCandidateCount(source.candidateCount) };
   const savedDifficulty = source.difficulty || {};
   const difficulty = {};
   [1, 2, 3].forEach(key => {
@@ -32,10 +41,10 @@ function mergeConfig(saved) {
     const safeMax=Number.isFinite(max)?Math.max(safeMin,Math.min(1,max)):fallback.maxPercentile;
     difficulty[key] = { minPercentile:safeMin, maxPercentile:safeMax };
   });
-  const next = { ...ALGORITHM_DEFAULTS, ...source, configVersion: 4, difficulty };
+  const next = { ...ALGORITHM_DEFAULTS, ...source, configVersion: 5, difficulty };
   delete next.historyWindow; // 早期版本的“最近点名统计窗口”，已无任何作用
   const numeric=(value,fallback)=>Number.isFinite(Number(value))?Number(value):fallback;
-  next.candidateCount=Math.max(1,Math.min(12,numeric(next.candidateCount,ALGORITHM_DEFAULTS.candidateCount)));
+  next.candidateCount=normalizeCandidateCount(numeric(next.candidateCount,ALGORITHM_DEFAULTS.candidateCount));
   next.recentDecay=Math.max(0,Math.min(0.999,numeric(next.recentDecay,ALGORITHM_DEFAULTS.recentDecay)));
   next.recoveryPerCall=Math.max(0,Math.min(1,numeric(next.recoveryPerCall,ALGORITHM_DEFAULTS.recoveryPerCall)));
   next.focusBoost=Math.max(0,numeric(next.focusBoost,ALGORITHM_DEFAULTS.focusBoost));
@@ -122,4 +131,4 @@ function timestampLocalDate(value) {
   if (!Number.isFinite(date.getTime())) return '';
   return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
 }
-function localDate() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+// 注意：localDate() 定义在 core.js（本文件不再重复定义，避免两份实现只有后加载的生效）

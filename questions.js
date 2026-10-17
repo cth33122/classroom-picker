@@ -25,10 +25,6 @@ function studentReviewState(studentId){
 function hasReviewContent(x){
   return Boolean(x&&(x.eval||String(x.question||'').trim()));
 }
-// 有哪些记录做过复盘（评价或问题）——给统计页做标记用
-function questionRecordsOf(studentId){
-  return studentReviewState(studentId).all.filter(hasReviewContent);
-}
 // 问题内容压成一行，供列表里显示
 function questionSummary(text,limit=40){
   const flat=String(text||'').replace(/\s+/g,' ').trim();

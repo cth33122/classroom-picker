@@ -1,7 +1,7 @@
 // 入口：视图分发、数据加载、service worker 注册
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v167';
+const APP_VERSION = 'v193';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -75,10 +75,30 @@ async function reload(){
   state.photos=await loadPhotos();   // 学生头像（Blob），只在需要显示时才生成 objectURL
   state.students.forEach(s=>{s.className=normalizeClassName(s.className);s.id=s.id||`${s.className}-${s.name}`;});
   state.examResults.forEach(r=>{if(r.result){r.result.className=normalizeClassName(r.result.className);r.identityKey=r.identityKey||`${r.result.className}-${r.result.name}`;}});
+  // 学生身份：幂等地给已有数据补上不可变 uid（第一次会写库；之后只补新产生的记录）。
+  // 这一步不改任何既有字段与界面行为，代码里仍全部用旧 id 认人。
+  try{
+    const ident=await ensureStudentUids({students:state.students,history:state.history,absences:state.absences,examResults:state.examResults});
+    if(ident.migrated){
+      if(ident.nextStudents)state.students=ident.nextStudents;
+      if(ident.nextHistory)state.history=ident.nextHistory;
+      if(ident.nextAbsences)state.absences=ident.nextAbsences;
+      if(ident.nextResults)state.examResults=ident.nextResults;
+      // 头像记录只是多了 studentUid 字段，重建内存映射即可（不重新读 blob，objectURL 缓存不受影响）
+      if(ident.nextPhotos)state.photos=Object.fromEntries(ident.nextPhotos.map(p=>[p.id,p]));
+      if(ident.firstTime){
+        const extra=ident.orphans?`；${ident.orphans} 条旧记录没对上学生（已保留，未删除）`:'';
+        toast(`已为学生建立稳定身份：${ident.students} 人${extra}`);
+      }
+      if(ident.problems&&ident.problems.length)console.warn('身份自检发现问题：',ident.problems.slice(0,20));
+    }
+  }catch(err){console.warn('身份补齐失败（不影响使用）：',err);}
   for(const exam of state.exams){const storedTotal=Number(exam.totalScore);if(Number.isFinite(storedTotal)&&storedTotal>100)continue;const max=Math.max(...state.examResults.filter(r=>r.examId===exam.id).map(r=>Number(r.result?.score)||0),0);if(max>100){exam.totalScore=[120,150,160,180,200].find(n=>max<=n)||Math.ceil(max/10)*10;await DB.put('exams',exam);}}
   state.settings=mergeConfig(await DB.getSettings());
   // 恢复上次选择的班级（失效时退回第一个班级）
   const meta=await DB.all('meta');
+  state.identity=meta.find(x=>x&&x.id==='identity')||null;   // 设置页“数据身份”那行只读状态
+  state.classBatches=(meta.find(x=>x&&x.id==='classChanges')?.batches)||[];   // 班级变动批次：班级页提示核对/撤销
   const savedClass=normalizeClassName(meta.find(x=>x&&x.id==='currentClass')?.value||'');
   // 恢复座位表色阶选择（刷新/重开后仍保持原来的选择）
   state.seatColorMode=seatColorModeValue(meta.find(x=>x&&x.id==='seatColorMode')?.value||'none');

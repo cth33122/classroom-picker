@@ -7,11 +7,11 @@ const STUDENT_EXAM_PREVIEW=3;
 function studentRows(rows){
   if(!rows.length)return '<div class="empty">暂无学生</div>';
   const exams=orderedExams(),currentExam=exams.find(e=>e.id===state.studentCurrentExamId)||exams[0],previousExam=state.studentPreviousExamId?exams.find(e=>e.id===state.studentPreviousExamId):null,hasComparison=Boolean(previousExam&&currentExam&&previousExam.id!==currentExam.id),classStudents=state.students.filter(s=>!state.currentClass||s.className===state.currentClass),rankMap=averageRankMap(classStudents);
-  return sortedStudents(rows).map(s=>{const latest=examResult(currentExam,s),previous=examResult(previousExam,s),l=latest||{},display=l.displayName||s.displayName||s.name,avg=averageScoreRate(s),avgRank=rankMap.get(s.id);return `<div class="stat-row student-row">\
+  return sortedStudents(rows).map(s=>{const latest=examResult(currentExam,s),previous=examResult(previousExam,s),l=latest||{},display=l.displayName||s.displayName||s.name,avg=averageScoreRate(s),avgRank=rankMap.get(s.id);return `<div class="stat-row student-row" data-student-row="${esc(s.id)}">\
 <span class="student-main">\
 ${avatarHtml(s,{size:34})}\
 <span class="student-main-text">\
-<button class="student-link" data-student-detail="${esc(s.id)}">${esc(display)}</button>${s.focus?' <span class="badge">关注</span>':''}${s.noCall?' <span class="badge no-call-badge">不参与点名</span>':''}\
+<button class="student-link ${focusNameClass(s)}" data-student-detail="${esc(s.id)}">${esc(display)}</button>${s.noCall?' <span class="badge no-call-badge">不参与点名</span>':''}\
 <br>\
 <small class="hint">${latest?`${l.score}分`:'缺考'}</small>\
 </span>\
@@ -35,15 +35,24 @@ function renderStudentDetail(id){
   $('#view-students').innerHTML=`<div class="panel">\
 <div class="detail-header">\
 ${avatarHtml(s,{size:64,editable:true})}\
-<h2 class="detail-name" id="editPinyinBtn" title="点击姓名可编辑注音">${nameHtml(s,display)}</h2>\
+<div class="detail-name-row">\
+<h2 class="detail-name ${focusNameClass(s)}" id="editPinyinBtn" title="点击姓名可编辑注音">${nameHtml(s,display)}</h2>\
+<button type="button" class="note-icon-btn${String(s.notes||'').trim()||noteImages(s).length?' has-note':''}" id="openNoteBtn" title="备注（文字/图片）" aria-label="备注"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4.8A1.8 1.8 0 0 1 5.8 3h9.4L20 7.8v11.4A1.8 1.8 0 0 1 18.2 21H5.8A1.8 1.8 0 0 1 4 19.2V4.8Zm11 1.4v3h3l-3-3ZM7.5 11h9v1.6h-9V11Zm0 3.6h9V16h-9v-1.4Z"/></svg></button>\
+${noteBadge(s)}\
+</div>\
 <button class="secondary" id="backStudents">返回</button>\
 </div>\
 <div class="detail-actions">\
 <button class="secondary detail-focus${s.focus?' on':''}" id="detailFocusBtn">${s.focus?'已关注':'未关注'}</button>\
 <button class="secondary detail-nocall${s.noCall?' on':''}" id="detailNoCallBtn">${s.noCall?'不参与点名':'参与点名'}</button>\
 </div>\
-<p class="hint">${esc(s.className)} · ${current?.score??'—'}分</p>\
-<p class="note-line"><button class="note-link" id="openPinyinBtn">注音</button>　<button class="note-link" id="openNoteBtn">备注</button>　<button class="note-link" id="openAvatarBtn">${photoRecord(s.id)?'更换头像':'设置头像'}</button>${noteBadge(s)}</p>\
+<details class="identity-fold">\
+<summary>身份 <span class="hint">班级 · 身份编号</span></summary>\
+<div class="identity-body">\
+<div class="identity-row"><span>班级</span><strong>${esc(s.className||'—')}</strong>${classHistoryText(s)?`<span class="hint">${esc(classHistoryText(s))}</span>`:''}</div>\
+<div class="identity-row"><span>身份编号</span><code class="identity-uid">${esc(s.uid||'未建立')}</code></div>\
+</div>\
+</details>\
 </div>\
 <div class="panel">\
 <h3>成绩趋势</h3>\
@@ -86,7 +95,7 @@ ${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc
 <span>${new Date(x.at).toLocaleString()}</span>\
 <span>${['','简单','适中','困难'][x.difficulty]||'—'}</span>\
 <span class="history-eval-cell">${evalText(x.eval)}</span>\
-<span><button type="button" class="student-link question-detail-link" data-student-questions="${esc(id)}" title="查看并编辑该生的问题记录">详情</button></span>\
+<span><button type="button" class="secondary row-btn" data-student-questions="${esc(id)}" title="查看并编辑该生的问题记录">详情</button></span>\
 </div>\
 <div class="history-q-row${q?'':' is-empty'}" data-history-question="${qid}" title="${q?'点击编辑这次的问题记录':'点击记录这次的问题'}">${q?esc(questionSummary(q,60)):'＋ 记录本次问题'}</div>`;}).join(''):'<div class="empty">暂无点名记录</div>'}\
 </div>`;
@@ -101,15 +110,26 @@ ${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc
     if(!rec){toast('这条记录已不存在');renderStudentDetail(id);return;}
     openStudentQuestions(rec.studentId,{focusId:rec.id,onClose:()=>renderStudentDetail(id)});
   });
-  // 头像：点详情页里的大头像，或“设置头像/更换头像”链接，都能直接拍照或选图再裁剪
+  // 头像：点圆形头像打开设置菜单（拍照/相册/删除/调整裁剪）
   const openAvatar=()=>openAvatarMenu(state.students.find(x=>x.id===id)||s);
   $$('#view-students [data-avatar-edit]').forEach(b=>b.onclick=openAvatar);
-  $('#openAvatarBtn').onclick=openAvatar;
-  $('#detailFocusBtn').onclick=async()=>{s.focus=!s.focus;await DB.put(s);renderStudentDetail(id);toast(s.focus?`已把 ${s.name} 设为关注`:`已取消 ${s.name} 的关注`);};$('#detailNoCallBtn').onclick=async()=>{s.noCall=!s.noCall;await DB.put(s);refreshCandidatesAfterSettings();renderStudentDetail(id);toast(s.noCall?`已把 ${s.name} 标记为不参与点名`:`已恢复 ${s.name} 的候选资格`);};$('#editPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openNoteBtn').onclick=()=>openNoteEditor(id);const examToggleBtn=$('#toggleExamList');if(examToggleBtn)examToggleBtn.onclick=()=>{state.studentExamExpand=!state.studentExamExpand;renderStudentDetail(id);};drawScoreChart(s,trendRecords);$('#toggleScoreMode').onclick=()=>{state.scoreChartMode=scoreChartMode()==='raw'?'rate':'raw';renderStudentDetail(id);};$('#viewScoreChart').onclick=()=>openScoreChart(records);$('#downloadScoreChartInline').onclick=()=>{const canvas=$('#scoreChart');const link=document.createElement('a');link.download='成绩趋势图.png';link.href=canvas.toDataURL('image/png');link.click();};
+  $('#detailFocusBtn').onclick=async()=>{s.focus=!s.focus;await DB.put(s);renderStudentDetail(id);toast(s.focus?`已把 ${s.name} 设为关注`:`已取消 ${s.name} 的关注`);};$('#detailNoCallBtn').onclick=async()=>{s.noCall=!s.noCall;await DB.put(s);refreshCandidatesAfterSettings();renderStudentDetail(id);toast(s.noCall?`已把 ${s.name} 标记为不参与点名`:`已恢复 ${s.name} 的候选资格`);};$('#editPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openNoteBtn').onclick=()=>openNoteEditor(id);const examToggleBtn=$('#toggleExamList');if(examToggleBtn)examToggleBtn.onclick=()=>{state.studentExamExpand=!state.studentExamExpand;renderStudentDetail(id);};drawScoreChart(s,trendRecords);$('#toggleScoreMode').onclick=()=>{state.scoreChartMode=scoreChartMode()==='raw'?'rate':'raw';renderStudentDetail(id);};$('#viewScoreChart').onclick=()=>openScoreChart(records);$('#downloadScoreChartInline').onclick=()=>{const canvas=$('#scoreChart');const link=document.createElement('a');link.download='成绩趋势图.png';link.href=canvas.toDataURL('image/png');link.click();};
 }
 
+// 打开某个学生的详情页（并切到“学生”标签，供点名页点座位、统计页点条目调用）
+function openStudentDetail(id){
+  if(!id)return;
+  state.studentDetailFrom=state.view||'students';
+  state.studentListScroll=$('#view-students')?.scrollTop||0;
+  state.studentDetail=id;
+  renderStudents();
+  goToView('students');
+  scrollViewTop('students');
+}
 function bindStudentActions(){
-  $$('[data-student-detail]').forEach(b=>b.onclick=()=>{state.studentDetailFrom=state.view||'students';state.studentListScroll=$('#view-students')?.scrollTop||0;state.studentDetail=b.dataset.studentDetail;renderStudents();scrollViewTop('students');});
+  $$('[data-student-detail]').forEach(b=>b.onclick=()=>openStudentDetail(b.dataset.studentDetail));
+  // 整行也可以点进详情页；行内的按钮（姓名、注音、备注…）优先
+  wireRowTap('#view-students','data-student-row',openStudentDetail);
 }
 
 // 学生备注：文字 + 图片。图片只罗列在文本框下方，不参与文字排版。
@@ -288,14 +308,13 @@ function sortedStudents(rows){
 function toggleStudentHeader(key){const prefix=key;state.studentSort=state.studentSort===`${prefix}-desc`?`${prefix}-asc`:`${prefix}-desc`;renderStudents();}
 
 // 打开某个学生的详情页并切换到“学生”标签（供座位表点击调用）
-function openStudentDetail(id){if(!id)return;state.studentDetailFrom=state.view||'students';state.studentDetail=id;renderStudents();goToView('students');scrollViewTop('students');}
 
 function renderStudents(){
   if(state.studentDetail){renderStudentDetail(state.studentDetail);return;}
   const filtered=state.students.filter(s=>!state.currentClass||s.className===state.currentClass),exams=orderedExams();
   if(!state.studentSelectionInitialized){state.studentCurrentExamId=exams.find(e=>e.id===state.studentCurrentExamId)?.id||exams[0]?.id||'';state.studentPreviousExamId=previousExamIdFor(state.studentCurrentExamId);state.studentSelectionInitialized=true;}
   const currentExam=exams.find(e=>e.id===state.studentCurrentExamId)||exams[0],previousExam=state.studentPreviousExamId?exams.find(e=>e.id===state.studentPreviousExamId):null,examDate=e=>e?.date?`<small class="hint exam-date">考试日期：${esc(e.date)}</small>`:'';
-  $('#view-students').innerHTML=`<div class="panel">\
+  $('#view-students').innerHTML=`${classChangeBannerHtml(state.currentClass)}<div class="panel">\
 <div class="grid">\
 <div class="field">\
 <label>当前考试</label>\
@@ -325,5 +344,6 @@ function renderStudents(){
     $('#studentSearch').oninput=e=>{$('#studentList').innerHTML=studentRows(filtered.filter(s=>String(s.name||'').includes(e.target.value.trim())));bindStudentActions();};
     $$('[data-student-sort]').forEach(b=>b.onclick=()=>toggleStudentHeader(b.dataset.studentSort));
     bindStudentActions();
+    bindClassChangeBanner();      // 本班班级变动提示条：核对无误 / 撤销这批变动
     
 }

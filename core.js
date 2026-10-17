@@ -1,7 +1,17 @@
 // 共享状态与通用工具：state/$/$$、考试与成绩的读取换算
 
-const state={view:'rollcall',students:[],history:[],absences:[],exams:[],examResults:[],settings:{},candidates:[],selectedCandidate:null,currentClass:'',difficulty:3,source:'',pendingImport:null,studentSort:'score-desc',studentDetail:null,studentDetailFrom:'',studentListScroll:0,statsMode:'timeline',historyStudentId:'',studentCurrentExamId:'',studentPreviousExamId:'',scoreChartMode:'rate',photos:{},seatCollapsed:false};
+const state={view:'rollcall',students:[],history:[],absences:[],exams:[],examResults:[],settings:{},candidates:[],selectedCandidate:null,currentClass:'',difficulty:3,source:'',pendingImport:null,studentSort:'score-desc',studentDetail:null,studentDetailFrom:'',studentListScroll:0,statsMode:'timeline',historyStudentId:'',studentCurrentExamId:'',studentPreviousExamId:'',scoreChartMode:'rate',photos:{},seatCollapsed:false,classBatches:[]};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+// 整行可点：行上写 data-*-row；点到行内按钮/链接（详情、删除、评价按钮…）时优先走按钮，不触发整行动作
+function wireRowTap(scopeSel,attr,open){
+  $$(`${scopeSel} [${attr}]`).forEach(row=>{
+    row.classList.add('stat-row-tap');
+    row.onclick=e=>{
+      if(e.target.closest('button,a,input,select,textarea,label,summary'))return;
+      open(row.getAttribute(attr));
+    };
+  });
+}
 
 // Current-exam selection always derives the immediately older exam.
 function toast(message){const el=$('#toast');el.textContent=message;el.classList.add('show');clearTimeout(toast.timer);toast.timer=setTimeout(()=>el.classList.remove('show'),2600);}
@@ -21,22 +31,12 @@ function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&l
 // ---------- 姓名注音（拼音） ----------
 // 声调表：1 阴平 2 阳平 3 上声 4 去声
 const PINYIN_TONES={a:['ā','á','ǎ','à'],o:['ō','ó','ǒ','ò'],e:['ē','é','ě','è'],i:['ī','í','ǐ','ì'],u:['ū','ú','ǔ','ù'],'ü':['ǖ','ǘ','ǚ','ǜ']};
-const PINYIN_MARKED=/[āáǎàōóǒòēéěèīíǐìūúǔùǖǘǚǜ]/;
 // 去掉声调、把 v 当 ü，只保留字母与 ü
 function pinyinBase(value){
   return String(value??'').toLowerCase()
     .replace(/[āáǎà]/g,'a').replace(/[ōóǒò]/g,'o').replace(/[ēéěè]/g,'e')
     .replace(/[īíǐì]/g,'i').replace(/[ūúǔù]/g,'u').replace(/[ǖǘǚǜ]/g,'ü')
     .replace(/v/g,'ü').replace(/[^a-zü]/g,'');
-}
-// 读出当前声调（0=轻声/无）
-function pinyinTone(value){
-  const text=String(value??'');
-  if(!PINYIN_MARKED.test(text))return 0;
-  if(/[āōēīūǖ]/.test(text))return 1;
-  if(/[áóéíúǘ]/.test(text))return 2;
-  if(/[ǎǒěǐǔǚ]/.test(text))return 3;
-  return 4;
 }
 // 给音节加声调标记：a>o>e 优先，其次 iu 标 u、ui 标 i，其余标最后一个元音
 function pinyinWithTone(base,tone){
@@ -106,3 +106,29 @@ function previousExamIdFor(currentId){
   const exams=orderedExams(), index=exams.findIndex(e=>e.id===currentId);
   return index>=0 ? (exams[index+1]?.id||'') : (exams[1]?.id||'');
 }
+
+// ---------- 面板说明弹窗：标题右边的“？” ----------
+// 页面上不再直接摊开大段说明，改成点标题右边的小问号弹窗看。
+// 说明内容统一登记在这里（需要动态数值时写成函数，打开弹窗时才算）。
+const PANEL_HELP={};
+function registerPanelHelp(key,title,body){PANEL_HELP[key]={title:title||'',body:body||''};}
+function panelHelpBtn(key,label){return `<button type="button" class="field-help panel-help" data-panel-help="${esc(key)}" aria-label="${esc(label||'这一节的说明')}" title="${esc(label||'说明')}">?</button>`;}
+function openPanelHelp(key){
+  const item=PANEL_HELP[key];
+  if(!item)return;
+  document.getElementById('panelHelpModal')?.remove();
+  const modal=document.createElement('div');
+  modal.id='panelHelpModal';modal.className='modal-backdrop';
+  const body=typeof item.body==='function'?item.body():item.body;
+  modal.innerHTML=`<div class="modal-card" role="dialog" aria-modal="true">\
+<div class="modal-header"><h2>${esc(item.title)}</h2><button class="icon-button modal-close" aria-label="关闭">×</button></div>\
+<div class="rule-help-body">${body}</div>\
+<div class="actions"><button class="primary" id="panelHelpOk">知道了</button></div>\
+</div>`;
+  document.body.appendChild(modal);
+  const close=()=>modal.remove();
+  modal.querySelector('.modal-close').onclick=close;
+  modal.onclick=e=>{if(e.target===modal)close();};
+  $('#panelHelpOk').onclick=close;
+}
+function bindPanelHelp(){$$('[data-panel-help]').forEach(b=>b.onclick=()=>openPanelHelp(b.dataset.panelHelp));}

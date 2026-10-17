@@ -1,9 +1,11 @@
 // 学生头像：本机保存（IndexedDB 的 photos 表，id 就是学生 id）、单人设置（拍照 / 相册 + 裁剪）、整班头像包导入。
-// 统一压成 512×512 的 JPEG Blob：手机原图动辄 3~5MB，直接入库会把 IndexedDB 和备份都撑大；
-// 座位格 / 候选卡上只显示 28~56px，512 足够清楚，也留着以后看大图。
+// 每个学生存两份：512×512 的方形头像（显示用）+ 长边 768 的“原图压缩版”（以后可以反复调整裁剪位置）。
+// 都压成 JPEG：手机原图动辄 3~5MB，直接入库会把 IndexedDB 撑大。
 
-const AVATAR_SIZE=512;          // 保存尺寸（正方形）
+const AVATAR_SIZE=512;          // 头像保存尺寸（正方形）
+const AVATAR_SRC_SIZE=768;      // “原图压缩版”的长边尺寸
 const AVATAR_QUALITY=0.86;
+const AVATAR_SRC_QUALITY=0.82;
 const AVATAR_ZOOM_MAX=4;        // 裁剪时最大放大倍数
 const PHOTO_FILE_RE=/\.(jpe?g|png|webp|gif|bmp|avif|heic|heif)$/i;
 
@@ -43,12 +45,18 @@ async function loadPhotos(){
   avatarUrlCache.forEach((v,k)=>{const rec=map[k];if(!rec||rec.updatedAt!==v.updatedAt){URL.revokeObjectURL(v.url);avatarUrlCache.delete(k);}});
   return map;
 }
-async function saveAvatar(studentId,blob){
+async function saveAvatar(studentId,blob,srcBlob){
   const rec={id:studentId,blob,type:blob.type||'image/jpeg',bytes:blob.size,updatedAt:Date.now()};
+  if(srcBlob)rec.srcBlob=srcBlob;                 // 原图压缩版：用于以后反复调整裁剪位置
   await DB.put('photos',rec);
   state.photos=state.photos||{};
   state.photos[studentId]=rec;
   return rec;
+}
+// 取“可以重新裁剪”的源图：优先原图压缩版（老数据没有就退回方形头像本身）
+function avatarSourceBlob(studentId){
+  const rec=photoRecord(studentId);
+  return rec?(rec.srcBlob||rec.blob||null):null;
 }
 async function deleteAvatar(studentId){
   await DB.remove('photos',studentId);
@@ -88,14 +96,27 @@ function canvasToBlob(canvas,type,quality){
     else resolve(dataUrlToBlob(canvas.toDataURL(type,quality)));
   });
 }
+// 整图缩到长边 AVATAR_SRC_SIZE（保留原图内容，供以后重新裁剪）
+async function sourceFrameBlob(src,w,h){
+  const scale=Math.min(1,AVATAR_SRC_SIZE/Math.max(w,h));
+  const canvas=document.createElement('canvas');
+  canvas.width=Math.max(1,Math.round(w*scale));canvas.height=Math.max(1,Math.round(h*scale));
+  const ctx=canvas.getContext('2d');
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+  ctx.drawImage(src,0,0,w,h,0,0,canvas.width,canvas.height);
+  return canvasToBlob(canvas,'image/jpeg',AVATAR_SRC_QUALITY);
+}
 // 居中正方形裁剪 + 缩放（整班导入用）；单人头像走裁剪窗口，可以自己调位置和缩放
+// 返回 {blob（512 方形）, srcBlob（原图压缩版）}
 async function squareAvatarBlob(src,w,h){
   const side=Math.min(w,h),canvas=document.createElement('canvas');
   canvas.width=AVATAR_SIZE;canvas.height=AVATAR_SIZE;
   const ctx=canvas.getContext('2d');
   ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
   ctx.drawImage(src,(w-side)/2,(h-side)/2,side,side,0,0,AVATAR_SIZE,AVATAR_SIZE);
-  return canvasToBlob(canvas,'image/jpeg',AVATAR_QUALITY);
+  const blob=await canvasToBlob(canvas,'image/jpeg',AVATAR_QUALITY);
+  const srcBlob=await sourceFrameBlob(src,w,h);
+  return {blob,srcBlob};
 }
 
 // ---------- 单个学生：拍照 / 相册 → 裁剪 ----------
@@ -111,9 +132,9 @@ function openAvatarMenu(student){
 <div class="actions avatar-menu-actions">\
 <button class="primary" id="avatarCameraBtn">拍照</button>\
 <button class="secondary" id="avatarAlbumBtn">从相册或文件选择</button>\
-${has?'<button class="danger" id="avatarRemoveBtn">删除头像</button>':''}\
+${has?'<button class="secondary" id="avatarRecropBtn">调整裁剪位置</button><button class="danger" id="avatarRemoveBtn">删除头像</button>':''}\
 </div>\
-<p class="hint">照片只保存在这台设备上，不会上传。选好后可以拖动、缩放，按正方形裁剪。</p>\
+<p class="hint">照片只保存在这台设备上，不会上传。选好后可以拖动、缩放、旋转，按正方形裁剪；已设置的头像可以再点“调整裁剪位置”重新取景。</p>\
 <input id="avatarCameraInput" type="file" accept="image/*" capture="environment" hidden>\
 <input id="avatarAlbumInput" type="file" accept="image/*" hidden>\
 </div>`;
@@ -135,6 +156,14 @@ ${has?'<button class="danger" id="avatarRemoveBtn">删除头像</button>':''}\
   };
   wire('avatarCameraInput','avatarCameraBtn');
   wire('avatarAlbumInput','avatarAlbumBtn');
+  // 已设置头像：用保存的“原图压缩版”重新打开裁剪窗，重新取景（不重新上传）
+  const recrop=$('#avatarRecropBtn');
+  if(recrop)recrop.onclick=async()=>{
+    const srcBlob=avatarSourceBlob(student.id);
+    if(!srcBlob){toast('这张头像没有可重新裁剪的原图，请重新选择照片');return;}
+    close();
+    await openAvatarCrop(student,srcBlob);
+  };
   const del=$('#avatarRemoveBtn');
   if(del)del.onclick=async()=>{close();await deleteAvatar(student.id);render();toast('已删除头像');};
 }
@@ -224,7 +253,10 @@ async function openAvatarCrop(student,file){
       ctx.scale(k,k);
       ctx.drawImage(img,-st.w/2,-st.h/2,st.w,st.h);
       const blob=await canvasToBlob(canvas,'image/jpeg',AVATAR_QUALITY);
-      await saveAvatar(student.id,blob);
+      // 顺带存一份“原图压缩版”，以后点“调整裁剪位置”可以从完整画面重新取景
+      let srcBlob=null;
+      try{srcBlob=await sourceFrameBlob(img,st.w,st.h);}catch(err){}
+      await saveAvatar(student.id,blob,srcBlob);
       done();
       render();
       toast('头像已保存');
@@ -417,9 +449,9 @@ async function importAvatarPackage(file){
     try{
       const dec=await decodeImage(await job.entry.zipEntry.async('blob'));
       try{
-        const blob=await squareAvatarBlob(dec.src,dec.w,dec.h);
+        const {blob,srcBlob}=await squareAvatarBlob(dec.src,dec.w,dec.h);
         if(photoRecord(job.student.id))replaced++;
-        await saveAvatar(job.student.id,blob);
+        await saveAvatar(job.student.id,blob,srcBlob);
         processed++;
       }finally{dec.release();}
     }catch(err){failed.push((job.student.displayName||job.student.name||'')+'：'+(err.message||'读取失败'));}

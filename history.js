@@ -1,14 +1,16 @@
-// 统计页：时间线/次数/难度统计与排序
-
-// Replace legacy settings renderer so removed probability models cannot be edited.
-// Updated compact roll-call view: show latest exam score, while the algorithm uses weighted recent averages.
+// 统计页：时间线/次数/难度统计与排序（姓名旁标签：关注=暗红姓名，不参与点名=灰标签）
 
 function historyScope(){return state.students.filter(s=>s.className===state.currentClass);}
 
-// 学生姓名旁的标签（关注 / 不参与点名），与点名页、学生页保持一致
+// “关注”不再用标签表示，改成把姓名本身染成暗红（点名页候选、学生页、统计页统一）
+// 其余标签（如“不参与点名”）保持原样
+function focusNameClass(s){
+  return s&&s.focus?'name-focus':'';
+}
+// 学生姓名旁的标签（不参与点名），与点名页、学生页保持一致
 function studentTags(s){
   if(!s)return '';
-  return `${s.focus?' <span class="badge">关注</span>':''}${s.noCall?' <span class="badge no-call-badge">不参与点名</span>':''}`;
+  return `${s.noCall?' <span class="badge no-call-badge">不参与点名</span>':''}`;
 }
 
 function renderHistory(){
@@ -43,9 +45,9 @@ function renderHistory(){
 <button data-history-sort="difficulty">难度${arrow('difficulty')}</button>\
 <span>评价</span>\
 <span>删除</span>\
-</div>${ordered.length?ordered.map(x=>{const s=classStudents.find(st=>st.id===x.studentId);const q=String(x.question||'').trim();const rowId='historyRow-'+String(x.id).replace(/[^\w-]/g,'');const qid=esc(String(x.id));return `<div class="stat-row history-timeline-row" id="${rowId}">\
+</div>${ordered.length?ordered.map(x=>{const s=classStudents.find(st=>st.id===x.studentId);const q=String(x.question||'').trim();const rowId='historyRow-'+String(x.id).replace(/[^\w-]/g,'');const qid=esc(String(x.id));return `<div class="stat-row history-timeline-row" id="${rowId}" data-history-row="${esc(x.studentId)}">\
 <span>\
-<button class="student-link" data-history-student="${esc(x.studentId)}">${esc(s?.displayName||s?.name||x.studentId)}</button>${studentTags(s)}\
+<button class="student-link ${focusNameClass(s)}" data-history-student="${esc(x.studentId)}">${esc(s?.displayName||s?.name||x.studentId)}</button>${studentTags(s)}\
 </span>\
 <span>${new Date(x.at).toLocaleString()}</span>\
 <span>${['','简单','适中','困难'][x.difficulty]||'—'}</span>\
@@ -61,13 +63,13 @@ function renderHistory(){
 <button data-history-sort="count">点名次数${arrow('count')}</button>\
 <button data-history-sort="date">日期${arrow('date')}</button>\
 <span>详情</span>\
-</div>${rows.length?rows.map(s=>`<div class="stat-row history-counts-row">\
+</div>${rows.length?rows.map(s=>`<div class="stat-row history-counts-row" data-history-row="${esc(s.id)}">\
 <span>\
-<button class="student-link" data-history-student="${esc(s.id)}">${esc(s.displayName||s.name)}</button>${studentTags(s)}\
+<button class="student-link ${focusNameClass(s)}" data-history-student="${esc(s.id)}">${esc(s.displayName||s.name)}</button>${studentTags(s)}\
 </span>\
 <span>${counts.get(s.id)||0}次</span>\
 <span>${lastCall.has(s.id)?relativeCallTime(lastCall.get(s.id)):'未点名'}</span>\
-<span><button type="button" class="student-link question-detail-link" data-student-questions="${esc(s.id)}" title="查看该生的问题记录">详情</button></span>\
+<span><button type="button" class="secondary row-btn" data-student-questions="${esc(s.id)}" title="查看该生的问题记录">详情</button></span>\
 </div>`).join(''):'<div class="empty">本班暂无学生</div>'}</div>`;
     
   $('#view-history').innerHTML=`<div class="panel">${nav}${statsRow}</div>${body}`;
@@ -113,8 +115,21 @@ function renderHistory(){
       toast('已删除该条点名记录');
     });
     // 点学生姓名 → 直接进入该生的详情页（成绩记录 + 点名记录合并显示）
-    $$('[data-history-student]').forEach(b=>b.onclick=()=>{state.historyStudentId='';state.studentDetailFrom=state.view||'history';state.studentDetail=b.dataset.historyStudent;state.studentExamExpand=false;renderStudents();goToView('students');scrollViewTop('students');});
+    $$('[data-history-student]').forEach(b=>b.onclick=()=>openStudentDetailFromHistory(b.dataset.historyStudent));
+    // 整行也可以点进详情页；行内按钮（姓名、评价、详情、删除）优先
+    wireRowTap('#view-history','data-history-row',openStudentDetailFromHistory);
     
+}
+// 从统计页进入某生的详情页（保留返回时回到统计页）
+function openStudentDetailFromHistory(id){
+  if(!id)return;
+  state.historyStudentId='';
+  state.studentDetailFrom=state.view||'history';
+  state.studentDetail=id;
+  state.studentExamExpand=false;
+  renderStudents();
+  goToView('students');
+  scrollViewTop('students');
 }
 
 function statsFilteredHistory(){

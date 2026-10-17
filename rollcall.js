@@ -39,10 +39,23 @@ function candidateLayout(count,seatShown){
   if(count===2)return {cols:2,tall:true};
   return {cols:seatShown?(count%2===0?2:3):2,tall:false};
 }
+// 一个面板“内容真正需要多高”：把某个子元素（如候选列表）替换成指定高度后，
+// 累加其余子元素高度 + 内外边距。用它而不是用面板当前的 offsetHeight，
+// 是因为座位面板在 flex 布局里会被拉高，多出来的空白会被误当成“座位表需要的高度”。
+function panelContentNeed(el,replaceEl,replaceH){
+  const cs=getComputedStyle(el);
+  let h=(parseFloat(cs.paddingTop)||0)+(parseFloat(cs.paddingBottom)||0)+(parseFloat(cs.borderTopWidth)||0)+(parseFloat(cs.borderBottomWidth)||0);
+  [...el.children].forEach(child=>{
+    const ccs=getComputedStyle(child);
+    const ch=child===replaceEl?replaceH:child.offsetHeight;
+    h+=ch+(parseFloat(ccs.marginTop)||0)+(parseFloat(ccs.marginBottom)||0);
+  });
+  return h;
+}
 // 按“卡片真实宽度 + 候选列表能分到的高度”算头像能放多大，写回 --cand-avatar。
-// 座位表展开时**先满足座位图完整显示**：把除候选列表以外（含座位图所需完整高度）的占用都扣掉，
-// 剩下的才是候选列表的额度；额度不够就把头像一档档压小，但绝不低于 CAND_AVATAR_MIN。
-// 用渲染后的真实尺寸量，所以换机、转屏、横竖屏都会自动跟着变；量不到就用 CSS 默认高度和下限 38px。
+// 座位表展开时：先按“内容真实需要的高度”把座位表要的留给它，剩下的全给候选列表；
+// 应用后再实测一次座位图有没有富余/被挤，把差额补给候选区或从候选区收回（线性收敛，最多 4 轮）。
+// 头像始终夹在 [CAND_AVATAR_MIN, 上限] 之间。
 function refitCandidateAvatars(){
   const list=$('#view-rollcall .candidate-list');
   if(!list)return;
@@ -53,35 +66,51 @@ function refitCandidateAvatars(){
   const rows=Math.max(1,Math.ceil(cards.length/cols));
   const gap=10,padV=Number(getComputedStyle(cards[0]).paddingTop.replace('px',''))||10;
   const tall=cards[0].classList.contains('candidate-tall');
+  const cap=tall?CAND_AVATAR_MAX_TALL:CAND_AVATAR_MAX_ROW;
   const minCardH=(tall?CAND_AVATAR_MIN+48:CAND_AVATAR_MIN)+padV*2;   // 用下限尺寸时一张卡至少要多高
+  const sizeFor=maxH=>{
+    const perCard=(maxH-gap*(rows-1))/rows;
+    const cardW=(listW-gap*(cols-1))/cols;
+    // 竖排：头像独占一行，只需扣掉卡片上下内边距和下面两行文字；横排：还要给右边文字留出宽度
+    const byWidth=tall?cardW-padV*2:cardW-CAND_AVATAR_TEXT_RESERVE;
+    const byHeight=tall?perCard-padV*2-48:perCard-padV*2;
+    return Math.round(Math.max(CAND_AVATAR_MIN,Math.min(cap,byWidth,byHeight)));
+  };
+  const apply=maxH=>{
+    list.style.maxHeight=Math.round(maxH)+'px';
+    const size=sizeFor(maxH);
+    list.style.setProperty('--cand-avatar',size+'px');
+    return size;
+  };
   const body=document.querySelector('#view-rollcall .rollcall-body');
   const chart=document.querySelector('#view-rollcall .seat-chart');
   const chartPanel=chart?chart.closest('.seat-panel'):null;
   const panel=list.closest('.panel');
-  let maxH=0;
-  if(body&&body.clientHeight>=200&&chart&&chartPanel&&panel){
-    // 座位表展开：统计“其它部分”占掉的高度——座位面板按“座位图完整显示”算，候选面板只算列表之外的部分
-    let occupied=0;
-    [...body.children].forEach(el=>{
-      const cs=getComputedStyle(el);
-      let h=el.offsetHeight;
-      if(el===panel)h=Math.max(0,h-list.offsetHeight);
-      if(el===chartPanel)h=Math.max(0,h-chart.clientHeight)+chart.scrollHeight;
-      occupied+=h+(parseFloat(cs.marginTop)||0)+(parseFloat(cs.marginBottom)||0);
-    });
-    maxH=Math.max(rows*minCardH,body.clientHeight-occupied);   // 再挤也不让卡片低于“下限头像”所需高度
-    list.style.maxHeight=Math.round(maxH)+'px';
-  }else{
+  if(!(body&&body.clientHeight>=200&&chart&&chartPanel&&panel)){
     list.style.removeProperty('max-height');   // 座位表没展开：交回 CSS（收起时 56vh、未安排座位时同样）
-    maxH=parseFloat(getComputedStyle(list).maxHeight)||Math.round((window.innerHeight||640)*0.32);
+    apply(parseFloat(getComputedStyle(list).maxHeight)||Math.round((window.innerHeight||640)*0.32));
+    return;
   }
-  const perCard=(maxH-gap*(rows-1))/rows;
-  const cardW=(listW-gap*(cols-1))/cols;
-  // 竖排：头像独占一行，只需扣掉卡片上下内边距和下面两行文字；横排：还要给右边文字留出宽度
-  const byWidth=tall?cardW-padV*2:cardW-CAND_AVATAR_TEXT_RESERVE;
-  const byHeight=tall?perCard-padV*2-48:perCard-padV*2;
-  const size=Math.round(Math.max(CAND_AVATAR_MIN,Math.min(tall?CAND_AVATAR_MAX_TALL:CAND_AVATAR_MAX_ROW,byWidth,byHeight)));
-  list.style.setProperty('--cand-avatar',size+'px');
+  const marginOf=el=>{const cs=getComputedStyle(el);return (parseFloat(cs.marginTop)||0)+(parseFloat(cs.marginBottom)||0);};
+  // 候选列表以外的占用：其它面板按实际高度，座位面板按“座位图完整显示”的需要，候选面板只算列表之外的部分
+  let others=0;
+  [...body.children].forEach(el=>{
+    if(el===panel||el===chartPanel)return;
+    others+=el.offsetHeight+marginOf(el);
+  });
+  const chartNeed=panelContentNeed(chartPanel,chart,chart.scrollHeight)+marginOf(chartPanel);
+  const listPanelNeed=panelContentNeed(panel,list,0)+marginOf(panel);
+  let budget=Math.max(rows*minCardH,body.clientHeight-chartNeed-listPanelNeed-others);
+  // 实测修正：座位图还有富余就把富余补给候选区；座位图被挤就从候选区收回
+  for(let pass=0;pass<4;pass++){
+    const size=apply(budget);
+    const delta=chart.clientHeight-chart.scrollHeight;     // >0：座位图上方还有空；<0：座位图被挤
+    if(Math.abs(delta)<2)break;
+    if(delta>0&&size>=cap&&list.scrollHeight<list.clientHeight-1)break;   // 头像已到上限且列表还有余量，再加也没用
+    const next=Math.max(rows*minCardH,Math.round(budget+delta));
+    if(next===budget)break;                                // 已被下限/上限卡住
+    budget=next;
+  }
 }
 // 转屏 / 窗口尺寸变化后重新算一次（列表不在时函数自己会返回）
 window.addEventListener('resize',()=>{requestAnimationFrame(refitCandidateAvatars);});
@@ -136,7 +165,7 @@ ${seatCollapsed?'<p class="hint">座位表已收起，候选头像已放大；�
 <div class="candidate-result-head">\
 ${avatarHtml(live,{size:56,cls:'avatar-picked'})}\
 <div class="candidate-result-who">\
-<strong>${nameHtml(live,live.displayName||live.name)}</strong>${studentTags(live)}\
+<strong class="${focusNameClass(live)}">${nameHtml(live,live.displayName||live.name)}</strong>${studentTags(live)}\
 </div>\
 <span class="candidate-result-diff">${['','简单','适中','困难'][state.difficulty]||''}</span>\
 </div>\
@@ -158,18 +187,18 @@ ${rec&&String(rec.question||'').trim()?`<button type="button" class="student-lin
       const layout=candidateLayout(visible.length,seatShown);
       const cards=visible.map(c=>{
         const live=liveOf(c),rank=rankMap.get(live.id);
-        const name=`${nameHtml(live,live.displayName||live.name)}${live.focus?' <span class="badge">关注</span>':''}`;
+        const name=`${nameHtml(live,live.displayName||live.name)}`,nameCls=focusNameClass(live);
         const meta=`<small class="candidate-meta"><span>班次 ${rank??'—'}</span><span>点名 ${c.recentCount}</span></small>`;
         const cls='candidate'+(layout.tall?' candidate-tall':'')+(visible.length===1?' candidate-single':'');
         if(layout.tall)return `<button type="button" class="${cls}" data-student="${esc(live.id)}">\
 ${avatarHtml(live,{size:CAND_AVATAR_SIZE})}\
-<strong>${name}</strong>\
+<strong class="${nameCls}">${name}</strong>\
 ${meta}\
 </button>`;
         return `<button type="button" class="${cls}" data-student="${esc(live.id)}">\
 ${avatarHtml(live,{size:CAND_AVATAR_SIZE})}\
 <span class="candidate-main">\
-<strong>${name}</strong>\
+<strong class="${nameCls}">${name}</strong>\
 ${meta}\
 </span>\
 </button>`;

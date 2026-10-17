@@ -62,20 +62,8 @@ async function saveSeatLayout(layout){
   state.seatLayout=layout;
   try{await DB.put('seats',layout);}catch(err){toast('座位表保存失败：'+err.message);}
 }
-function seatOfStudent(studentId){const layout=state.seatLayout;if(!layout||!studentId)return null;return layout.seats.find(s=>s.studentId===studentId)||null;}
 function seatById(id){const layout=state.seatLayout;return layout?layout.seats.find(s=>s.id===id)||null:null;}
 function seatLabel(seat){if(!seat)return '';if(seat.kind==='side')return seat.label||'讲台旁';return `第${seat.row}排 第${seat.col}列`;}
-function seatGroupLabel(seat){
-  if(!seat||seat.kind==='side'||!state.seatLayout)return '';
-  return `第${seatGroupNumber(state.seatLayout,seat.col)}大组`;
-}
-// 候选卡片上显示的座位提示
-function seatPositionText(studentId){
-  const seat=seatOfStudent(studentId);
-  if(!seat)return '未排座';
-  const group=seatGroupLabel(seat);
-  return seatLabel(seat)+(group?` · ${group}`:'');
-}
 function studentOfSeat(seat){return seat&&seat.studentId?state.students.find(s=>s.id===seat.studentId)||null:null;}
 
 // 点名页点击座位（姓名）：进入对应学生的详情页
@@ -466,18 +454,25 @@ function saveSeatEditor(){
   if(!seatEditor)return;
   seatEditor.dirty=false;
   const layout=seatEditor.layout;
-  discardSeatEditor();
+  // 先关窗但**不重绘**：此刻 state.seatLayout 还是打开编辑前的旧快照，
+  // 先画一遍只会画出旧座位表（甚至仍是“未安排座位”）。等存好再按新布局重绘。
+  discardSeatEditor(true);
   saveSeatLayout(layout)   // 同步 state.seatLayout 并写入本机数据库（失败时它自己会提示）
-    .then(()=>toast('座位表已保存'))
-    .catch(()=>{});
+    .then(()=>{
+      toast('座位表已保存');
+      // 刚排完座位，顺手展开（之前可能被收起过），让你立刻看到结果
+      if(state.seatCollapsed){state.seatCollapsed=false;DB.put('meta',{id:'seatCollapsed',value:false}).catch(()=>{});}
+      renderRollcall();
+    })
+    .catch(()=>{renderRollcall();});
 }
-function discardSeatEditor(){
+function discardSeatEditor(skipRender){
   document.body.classList.remove('modal-open');
   $('#seatCloseModal')?.remove();
   const m=$('#seatModal');if(m)m.remove();
   seatEditor=null;
   setSeatFitCtx('ed',null);   // 弹窗关了，缓存的编辑器量宽结果作废
-  renderRollcall();
+  if(!skipRender)renderRollcall();
 }
 function openSeatCloseDialog(){
   const old=$('#seatCloseModal');

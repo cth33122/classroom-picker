@@ -1,4 +1,4 @@
-:root { --ink:#16302b; --muted:#6b7c78; --teal:#0f766e; --teal-dark:#095e58; --mint:#dff4ef; --line:#dfe9e6; --paper:#fff; --bg:#f5f7f6; --warn:#b45309; --danger:#b42318; }
+:root { --ink:#16302b; --name-ink:#111111; --muted:#6b7c78; --teal:#0f766e; --teal-dark:#095e58; --mint:#dff4ef; --line:#dfe9e6; --paper:#fff; --bg:#f5f7f6; --warn:#b45309; --danger:#b42318; --focus:#9b1c1c; --purple:#7c3aed; }
 * { box-sizing:border-box; }
 html, body { height:100%; }
 body { margin:0; background:var(--bg); color:var(--ink); font-family: system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; display:flex; flex-direction:column; height:100vh; height:100dvh; overflow:hidden; }
@@ -15,11 +15,98 @@ main { flex:1 1 auto; min-height:0; width:100%; max-width:980px; margin:0 auto; 
 .view { flex:0 0 100%; width:100%; min-width:0; min-height:0; overflow-y:auto; overflow-x:hidden; scroll-snap-align:start; scroll-snap-stop:always; padding:0 14px 40px; }
 .panel { background:var(--paper); border:1px solid var(--line); border-radius:8px; padding:16px; margin:10px 0; }.panel h2,.panel h3 { margin:0 0 12px; }.grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }.field { display:flex; flex-direction:column; gap:6px; }.field label { color:var(--muted); font-size:13px; }.field input,.field select { width:100%; min-height:42px; border:1px solid var(--line); border-radius:7px; padding:9px 10px; background:#fff; color:var(--ink); font-size:15px; }
 button { font:inherit; cursor:pointer; }.primary,.secondary,.danger { min-height:42px; border:0; border-radius:7px; padding:10px 14px; font-weight:700; }.primary { color:#fff; background:var(--teal); }.primary:hover { background:var(--teal-dark); }.secondary { color:var(--teal); background:var(--mint); }.danger { color:var(--danger); background:#fde8e7; }.icon-button { border:1px solid rgba(255,255,255,.4); background:transparent; color:#fff; width:40px; height:40px; border-radius:7px; font-size:24px; }
-.candidate-list { display:grid; gap:10px; }.candidate { display:flex; align-items:center; justify-content:space-between; gap:12px; text-align:left; width:100%; border:1px solid var(--line); background:#fff; border-radius:8px; padding:14px; }.candidate strong { display:block; font-size:18px; }.candidate small { color:var(--muted); }.candidate .score { color:var(--teal); font-weight:700; white-space:nowrap; }.hero { text-align:center; padding:24px 10px; }.hero .class-name { color:var(--muted); }.hero .question { margin:8px 0 18px; font-size:20px; font-weight:800; }.actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }.actions > * { flex:1; min-width:130px; }.empty { color:var(--muted); text-align:center; padding:26px 10px; }.hint { color:var(--muted); font-size:13px; line-height:1.6; }.stat-row { display:grid; grid-template-columns:1.4fr .8fr .8fr; align-items:center; gap:8px; padding:11px 0; border-bottom:1px solid var(--line); }.stat-row:last-child { border-bottom:0; }.badge { display:inline-block; color:var(--teal); background:var(--mint); border-radius:999px; padding:3px 8px; font-size:12px; }.danger-text { color:var(--danger); }.success-text { color:var(--teal); }.file-input { width:100%; padding:12px 0; }.switch { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 0; border-bottom:1px solid var(--line); }.switch input { width:20px; height:20px; accent-color:var(--teal); }
+.candidate-list { display:grid; gap:10px; }.candidate { display:flex; align-items:center; justify-content:space-between; gap:12px; text-align:left; width:100%; border:1px solid var(--line); background:#fff; border-radius:8px; padding:14px; }.candidate strong { display:block; font-size:18px; }.candidate small { color:var(--muted); }.candidate .score { color:var(--teal); font-weight:700; white-space:nowrap; }.hero { text-align:center; padding:24px 10px; }.hero .class-name { color:var(--muted); }.hero .question { margin:8px 0 18px; font-size:20px; font-weight:800; }.actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }.actions > * { flex:1; min-width:130px; }.empty { color:var(--muted); text-align:center; padding:26px 10px; }.hint { color:var(--muted); font-size:13px; line-height:1.6; }.stat-row { display:grid; grid-template-columns:1.4fr .8fr .8fr; align-items:center; gap:8px; padding:11px 0; border-bottom:1px solid var(--line); }.stat-row:last-child { border-bottom:0; }.badge { display:inline-block; color:var(--teal); background:var(--mint); border-radius:999px; padding:3px 8px; font-size:12px; }
+/* “关注”标签：暗红字体（区别于其他徽标） */
+.danger-text { color:var(--danger); }.file-input { width:100%; padding:12px 0; }.switch { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:11px 0; border-bottom:1px solid var(--line); }.switch input { width:20px; height:20px; accent-color:var(--teal); }
 .toast { position:fixed; left:50%; bottom:22px; z-index:9999; transform:translate(-50%,20px); opacity:0; pointer-events:none; color:#fff; background:#193a35; border-radius:7px; padding:11px 15px; transition:.2s; max-width:calc(100vw - 32px); }.toast.show { transform:translate(-50%,0); opacity:1; }
-.rank-up { color:#1769aa; font-weight:700; }.rank-down { color:#b42318; font-weight:700; }.rank-same,.rank-missing { color:var(--muted); }.rank-info { line-height:1.7; font-size:13px; }
-.absence-badge { color:#7c3aed; background:#f0e7ff; }
-.absence-action { color:#7c3aed; background:#f0e7ff; border:0; min-height:42px; min-width:82px; padding:10px 14px; border-radius:7px; font-weight:700; }
+.rank-up { color:#1769aa; font-weight:700; }.rank-down { color:#b42318; font-weight:700; }.rank-same{ color:var(--muted); }.rank-info { line-height:1.7; font-size:13px; }
+/* 整行可点（进入详情页）：行内按钮优先，所以只给整行一个轻微的可点提示 */
+.stat-row-tap { cursor:pointer; }
+.stat-row-tap:hover { background:rgba(15,118,110,.05); }
+.stat-row-tap:active { background:rgba(15,118,110,.09); }
+/* ---------- 学生详情页：身份小节 ---------- */
+/* 姓名 + 备注图标同一行（备注图标紧跟在姓名右侧，作为新的备注入口） */
+.detail-name-row { display:flex; align-items:center; flex:1 1 auto; min-width:0; gap:6px; }
+.detail-name-row .detail-name { flex:0 1 auto; }
+.note-icon-btn { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:32px; height:32px; padding:0; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--muted); cursor:pointer; }
+.note-icon-btn svg { width:18px; height:18px; fill:currentColor; }
+.note-icon-btn:hover { border-color:var(--teal); color:var(--teal); }
+.note-icon-btn.has-note { border-color:var(--teal); background:var(--mint); color:var(--teal); }
+.identity-fold { margin:12px 0 0; border:1px solid var(--line); border-radius:7px; background:#fff; }
+.identity-fold summary { cursor:pointer; padding:10px 12px; font-weight:700; list-style-position:inside; }
+.identity-fold summary .hint { font-weight:400; }
+.identity-fold[open] summary { border-bottom:1px solid var(--line); }
+.identity-body { display:grid; gap:6px; padding:10px 12px; }
+.identity-row { display:grid; grid-template-columns:78px 1fr; align-items:baseline; gap:4px 10px; font-size:14px; }
+.identity-row > span:first-child { color:var(--muted); }
+.identity-row .hint { grid-column:2; }
+.identity-uid { font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; color:var(--muted); overflow-wrap:anywhere; }
+/* 备选认人编号（设置页）：可查看、可删除 */
+.alias-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.alias-actions .secondary { min-height:34px; padding:6px 12px; }
+/* 备选编号的清除按钮：按族分组，族内可按列名单独清（只清「准考证号」…）或整族清 */
+.alias-clear-block { display:grid; gap:6px; margin-bottom:8px; }
+.alias-family-row { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+.alias-family-name { min-width:56px; color:var(--muted); font-size:13px; font-weight:700; }
+.alias-family-btns { display:flex; flex-wrap:wrap; gap:6px; }
+.alias-clear-btn { min-height:32px; padding:4px 10px; font-size:13px; }
+.alias-clear-count { margin-left:5px; color:var(--muted); font-size:12px; }
+/* 清除确认弹窗里的“本班编号示例” */
+.alias-clear-list { list-style:none; margin:6px 0 0; padding:0; display:grid; gap:4px; max-height:38vh; overflow:auto; border:1px solid var(--line); border-radius:7px; padding:8px 10px; background:#fff; }
+.alias-clear-list li { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 8px; padding-bottom:3px; border-bottom:1px dashed var(--line); font-size:13px; }
+.alias-clear-list li:last-child { border-bottom:0; padding-bottom:0; }
+.alias-clear-who { min-width:64px; font-weight:700; }
+.alias-clear-vals { min-width:0; color:var(--muted); overflow-wrap:anywhere; }
+.alias-list { display:grid; gap:4px; max-height:46vh; overflow:auto; border:1px solid var(--line); border-radius:7px; padding:8px 10px; background:#fff; }
+.alias-row { display:grid; grid-template-columns:minmax(96px,auto) 1fr; gap:2px 10px; align-items:center; padding:3px 0; border-bottom:1px dashed var(--line); font-size:13px; }
+.alias-row:last-child { border-bottom:0; }
+.alias-who { font-weight:700; }
+.alias-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.alias-chip { display:inline-flex; align-items:center; gap:4px; padding:2px 4px 2px 8px; border:1px solid var(--line); border-radius:999px; background:var(--bg); font-size:12px; }
+.alias-del { border:0; background:transparent; color:var(--muted); font-size:15px; line-height:1; padding:5px 7px; margin:-5px -3px -5px 0; cursor:pointer; border-radius:50%; }
+.alias-del:hover { color:var(--danger); }
+/* 分班确认弹窗：同名指认 */
+.class-shift-card { width:min(620px,100%); }
+.shift-assigns { display:grid; gap:6px; margin-top:6px; }
+.shift-assign { display:grid; gap:4px; }
+.shift-assign > span { color:var(--muted); font-size:12px; }
+.shift-assign select { width:100%; min-height:36px; border:1px solid var(--line); border-radius:6px; padding:4px 6px; font:inherit; font-size:13px; }
+/* 学生页：本班班级变动提示条 */
+.class-change-panel { border-left:4px solid var(--warn); }
+.class-change-panel h3 { display:flex; align-items:center; gap:8px; margin:0 0 6px; }
+/* 一批变动 = 一个块：第一行只放“考试名 · 日期”，下面另起一行罗列转入/转出，最后是按钮 */
+.class-change-line { display:flex; flex-direction:column; gap:7px; padding:10px 0; border-top:1px dashed var(--line); font-size:13px; }
+.class-change-line:first-of-type { border-top:0; }
+.class-change-exam { font-weight:700; color:var(--ink); overflow-wrap:anywhere; }
+.class-change-text { min-width:0; display:flex; flex-direction:column; gap:3px; }
+/* 转入、转出各占一行，行距略放宽；“转入 N 人 / 转出 N 人”用红色 */
+.class-change-move { display:block; line-height:1.65; }
+.move-label { color:var(--danger); font-weight:700; }
+.class-change-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.class-change-btn { min-height:32px; padding:5px 12px; font-size:13px; }
+/* 数据页的“班级变动记录”：一批一条，展开看每个班的转入/转出与核对状态 */
+.batch-item { padding:9px 0; border-top:1px dashed var(--line); }
+.batch-item:first-of-type { border-top:0; }
+.batch-item summary { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; cursor:pointer; }
+.batch-main { flex:1 1 62%; min-width:0; display:flex; flex-direction:column; gap:2px; }
+.batch-title { font-weight:700; color:var(--ink); }
+.batch-badge-pending { color:var(--danger); background:#fbe9e9; }
+.batch-class-list { list-style:none; margin:8px 0 0; padding:0; display:flex; flex-direction:column; gap:4px; }
+.batch-class-line { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px; font-size:13px; }
+.batch-class-line.is-done { opacity:.6; }
+.batch-class-name { min-width:52px; font-weight:700; }
+.batch-item .class-change-actions { margin-top:9px; }
+/* ---------- 调整班级向导 ---------- */
+.class-adjust-card { width:min(560px,100%); }
+.ca-toolbar { display:flex; align-items:center; gap:8px; margin:2px 0 8px; }
+.ca-toolbar .secondary { min-height:34px; padding:6px 12px; }
+.ca-list { max-height:44vh; overflow:auto; border:1px solid var(--line); border-radius:7px; background:#fff; }
+.ca-row { display:grid; grid-template-columns:auto 1fr; align-items:center; gap:2px 10px; padding:9px 12px; border-bottom:1px solid var(--line); cursor:pointer; }
+.ca-row:last-child { border-bottom:0; }
+.ca-row:hover { background:rgba(15,118,110,.05); }
+.ca-row input { width:20px; height:20px; accent-color:var(--teal); }
+.ca-row .ca-name { font-weight:700; }
+.ca-row .hint { grid-column:2; }
 .student-row > span:first-child { min-width:0; }
 .student-row > span:first-child small { display:inline-block; max-width:100%; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; vertical-align:bottom; }
 .student-row .student-link { max-width:100%; overflow-wrap:anywhere; }
@@ -70,10 +157,14 @@ button { font:inherit; cursor:pointer; }.primary,.secondary,.danger { min-height
 .seat-trunc { box-shadow:inset 0 -3px 0 rgba(180,35,24,.34); }
 .seat-vacant { background:var(--bg); border-style:dashed; color:var(--muted); font-weight:400; }
 .seat-side { background:#fff; }
-.seat-cand { border:2px solid var(--danger); box-shadow:0 0 0 2px rgba(180,35,24,.38), 0 0 7px 2px rgba(180,35,24,.30); }
-.seat-sel { background:var(--danger); border:2px solid var(--danger); color:#fff; box-shadow:0 0 0 2px rgba(180,35,24,.45), 0 0 8px 2px rgba(180,35,24,.35); }
+.seat-cand { border:2px solid var(--purple); box-shadow:0 0 0 2px rgba(124,58,237,.34), 0 0 7px 2px rgba(124,58,237,.26); }
+.seat-sel { background:var(--purple); border:2px solid var(--purple); color:#fff; box-shadow:0 0 0 2px rgba(124,58,237,.42), 0 0 8px 2px rgba(124,58,237,.32); }
 .seat-sel.seat-tinted { color:var(--ink); }
 .seat-focus:not(.seat-cand):not(.seat-sel) { border-color:var(--teal); }
+/* 点名页座位表里的“关注”学生：不再用边框强调，改成暗红字体（座位表编辑页保持原样）
+   字体颜色在“被候选”时依然是暗红（紫色候选边框保留），只有“已选中”（紫底白字）时才让位给白色 */
+#seatChartRoll .seat-focus:not(.seat-sel) { color:var(--focus); }
+#seatChartRoll .seat-focus:not(.seat-cand):not(.seat-sel) { border-color:var(--line); }
 .seat-nocall { opacity:.55; }
 .seat-called { text-decoration-line:underline; text-decoration-thickness:2px; text-underline-offset:2px; text-decoration-color:#000; }
 .seat-panel-actions { display:flex; align-items:center; gap:8px; }
@@ -129,38 +220,40 @@ body.modal-open .view-track { touch-action:none; }
 .seat-import-note.group, .seat-import-note.empty { color:var(--muted); }
 .seat-import-note.info::before { content:'✓'; color:var(--teal); }
 .seat-import-card textarea { width:100%; min-height:130px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; font:inherit; font-size:14px; resize:vertical; }
-.selected-candidate { border-color:var(--teal); background:var(--mint); }
-.student-link { border:0; padding:0; background:transparent; color:var(--teal); font:inherit; font-weight:700; text-align:left; }
+.student-link { border:0; padding:0; background:transparent; color:var(--name-ink); font:inherit; font-weight:700; text-align:left; }
+/* 学生姓名统一用中性黑（学生页/统计页姓名、点名页候选与结果卡、点名页座位表）
+   注意：要排除 .seat-sel（选中=白字）、.seat-vacant（空位=灰）、.seat-focus（关注=暗红），
+   否则同权重且靠后会把这些专用颜色覆盖掉 */
+#seatChartRoll .seat:not(.seat-sel):not(.seat-vacant):not(.seat-focus) { color:var(--name-ink); }
+.candidate strong, .candidate-result-head strong, .detail-name { color:var(--name-ink); }
+/* “关注”用暗红姓名表示（点名页候选卡、学生页列表与详情、统计页），不再用标签 */
+.student-link.name-focus, .candidate strong.name-focus, .candidate-result-head strong.name-focus, .detail-name.name-focus { color:var(--focus); }
+/* 行内“详情”按钮（学生点名记录 / 统计页点名统计）：原来是文字超链接，现在做成按钮 */
+.row-btn { min-height:32px; min-width:0; padding:6px 10px; font-size:13px; white-space:nowrap; }
 .detail-header { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }.detail-header h2 { flex:1 1 auto; min-width:0; margin:0; overflow-wrap:anywhere; }.detail-header .secondary { flex:0 0 auto; white-space:nowrap; }.detail-actions { display:flex; gap:8px; margin:12px 0 0; }.detail-actions > * { flex:1; min-width:0; }
 .chart-wrap { position:relative; width:100%; height:320px; overflow-x:auto; overflow-y:hidden; border:1px solid var(--line); border-radius:7px; background:#fff; }.chart-wrap canvas { display:block; min-width:0; width:auto; height:300px; border:0; background:#fff; }
 .chart-wrap canvas { cursor:zoom-in; }
 .chart-preview-card { width:min(820px,100%); }
 .chart-preview-wrap { width:100%; overflow:hidden; border:1px solid var(--line); border-radius:7px; background:#fff; }
 .chart-preview-wrap canvas { display:block; max-width:100%; border:0; background:#fff; }
-.rank-cell { min-width:150px; }.rank-scale { display:flex; gap:3px; margin-top:5px; }.rank-chip { display:inline-block; min-width:25px; padding:2px 4px; border-radius:4px; text-align:center; font-size:11px; }
+.rank-cell { min-width:150px; }.rank-chip { display:inline-block; min-width:25px; padding:2px 4px; border-radius:4px; text-align:center; font-size:11px; }
 .stats-switch { display:flex; gap:6px; }.stats-switch .active { color:#fff; background:var(--teal); }
-.sort-button.active { color:#fff; background:var(--teal); }
 .shortcut-editor { display:flex; align-items:center; gap:8px; }
 .shortcut-editor input { flex:1; min-width:0; }
 .shortcut-editor button { flex:0 0 auto; }
 .exam-date { display:block; margin-top:4px; }
-.call-info { min-width:0; white-space:nowrap; color:var(--teal); font-size:13px; }
-.call-info small { display:block; color:var(--muted); font-size:11px; }
 /* 难度饼图：图注已画进画布，容器紧贴画布，尽量不留空白 */
 .difficulty-stats { padding-bottom:6px; }
 .difficulty-stats .history-section-title { margin-bottom:6px; }
 .difficulty-chart { display:block; line-height:0; }
-.difficulty-chart canvas { display:block; max-width:100%; height:auto; }
-/* 图注已画进画布，这三条规则不再需要 */
-.exam-name-list { display:grid; gap:8px; }.exam-name-item { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; padding:13px 14px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); text-align:left; }.exam-name-item:hover { border-color:var(--teal); background:var(--mint); }.exam-name-item small { color:var(--muted); white-space:nowrap; }
-.backup-picker { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }.backup-picker > * { flex:1; min-width:130px; }.backup-picker label { display:inline-flex; align-items:center; justify-content:center; text-align:center; }
+.difficulty-chart canvas { display:block; max-width:100%; height:auto; }.exam-name-item { display:flex; align-items:center; justify-content:space-between; gap:12px; width:100%; padding:13px 14px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); text-align:left; }.exam-name-item:hover { border-color:var(--teal); background:var(--mint); }.exam-name-item small { color:var(--muted); white-space:nowrap; }
 .modal-backdrop { position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center; padding:16px; background:rgba(10,30,26,.42); }.modal-card { width:min(520px,100%); max-height:calc(100vh - 32px); overflow:auto; padding:18px; border-radius:8px; background:var(--paper); box-shadow:0 18px 50px rgba(0,0,0,.22); }.modal-header { display:flex; align-items:center; justify-content:space-between; margin-bottom:12px; }.modal-header h2 { margin:0; }.modal-close { border:0; background:transparent; color:var(--ink); font-size:26px; }
-.table-header { position:sticky; top:0; z-index:1; display:grid; align-items:center; gap:8px; padding:10px 0; background:var(--paper); border-bottom:1px solid var(--line); font-size:13px; font-weight:800; }.table-header button { min-height:34px; border:0; padding:6px 0; background:transparent; color:var(--ink); font-weight:800; text-align:left; }.student-table-header { grid-template-columns:100fr 129fr 86fr; }.history-table-header,.history-record-header { grid-template-columns:80fr 95fr 90fr; }.student-section-title { margin:10px 0 8px; color:var(--muted); font-size:13px; font-weight:700; }.chart-actions { display:flex; justify-content:center; gap:8px; margin-top:10px; }.chart-large-wrap { overflow:auto; max-height:calc(100vh - 180px); border:1px solid var(--line); border-radius:7px; background:#fff; }.chart-large-wrap canvas { display:block; }
+.table-header { position:sticky; top:0; z-index:1; display:grid; align-items:center; gap:8px; padding:10px 0; background:var(--paper); border-bottom:1px solid var(--line); font-size:13px; font-weight:800; }.table-header button { min-height:34px; border:0; padding:6px 0; background:transparent; color:var(--ink); font-weight:800; text-align:left; }.student-table-header { grid-template-columns:100fr 129fr 86fr; }.student-section-title { margin:10px 0 8px; color:var(--muted); font-size:13px; font-weight:700; }.chart-actions { display:flex; justify-content:center; gap:8px; margin-top:10px; }.chart-large-wrap { overflow:auto; max-height:calc(100vh - 180px); border:1px solid var(--line); border-radius:7px; background:#fff; }.chart-large-wrap canvas { display:block; }
 .history-section-title { margin:0 0 10px; color:var(--muted); font-size:13px; font-weight:700; }
 .detail-focus { color:var(--ink); background:var(--mint); }.detail-focus.on { color:#fff; background:var(--danger); }
 .student-section-title,.history-section-title,.table-header { font-size:14px; }
 .sort-arrow { display:inline-block; min-width:1em; margin-left:3px; font-size:16px; line-height:1; font-weight:900; vertical-align:-1px; }
-.data-import-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }.data-import-actions .file-input { flex:1; min-width:220px; }.exam-fold-list { display:grid; gap:8px; }.exam-fold { border:1px solid var(--line); border-radius:7px; background:#fff; }.exam-fold summary { cursor:pointer; padding:13px 14px; font-weight:700; list-style-position:inside; }.exam-fold[open] summary { border-bottom:1px solid var(--line); background:var(--mint); }.exam-fold-content { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 14px; }.exam-fold-content button { min-height:36px; padding:7px 12px; }
+.data-import-actions { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }.data-import-actions .file-input { flex:1; min-width:220px; }.exam-fold-list { display:grid; gap:8px; }.exam-fold { border:1px solid var(--line); border-radius:7px; background:#fff; }.exam-fold summary { cursor:pointer; padding:13px 14px; font-weight:700; list-style-position:inside; }.exam-fold[open] summary { border-bottom:1px solid var(--line); background:var(--mint); }
 @media (max-width:719px) {
   .table-header { top:0; }
 }
@@ -173,7 +266,6 @@ body.modal-open .view-track { touch-action:none; }
 .exam-import-pick input { width:18px; height:18px; accent-color:var(--teal); }
 .exam-import-card .grid { margin-bottom:6px; }
 .exam-import-card .hint { margin:6px 0 0; }
-.note-line { margin:12px 0 0; }
 /* 姓名注音：拼音显示在对应汉字正上方 */
 ruby { ruby-position:over; }
 ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0; }
@@ -253,7 +345,6 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
 .history-eval-btn:hover { border-color:var(--line); background:var(--bg); }
 .history-eval-btn.is-good { background:#e8f7ef; border-color:#b7e4c9; }
 .history-eval-btn.is-bad { background:#fdeceb; border-color:#f3c2bd; }
-.question-detail-link { font-size:13px; white-space:nowrap; }
 /* 每条点名记录下方的问题栏：紧贴记录、最多两行；没有内容时是一栏可点的“＋ 记录本次问题”。
    注意：这里不能用 .stat-row，否则会带上 11px/11px 的内边距和一条分隔线，每条记录凭空多出大片留白 */
 .history-q-row { margin:0 0 8px; padding:2px 0 2px 10px; border-left:2px solid var(--mint); color:var(--teal); font-size:12px; line-height:1.45; cursor:pointer; white-space:nowrap;
@@ -275,7 +366,8 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
 .candidate-result-eval .eval-btn.is-bad { background:#fdeceb; }
 /* “记录问题”靠右显示（margin-left:auto 把它推到本行剩余空间的右侧） */
 .question-record-btn { margin-left:auto; min-height:36px; padding:6px 12px; font-size:13px; }
-.question-latest { font-size:13px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* “已记问题”仍是可点的文字链接（不是姓名，保留主题色以示可点） */
+.question-latest { color:var(--teal); font-size:13px; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 /* 记录问题 / 问题记录弹窗 */
 .eval-picker { display:flex; align-items:center; gap:8px; }
 .eval-btn { min-height:34px; padding:4px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; font-size:16px; cursor:pointer; }
@@ -313,6 +405,9 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
 /* 设置项旁边的小问号：点开该设置项的说明弹窗 */
 .field-help { flex:0 0 auto; width:20px; height:20px; min-height:0; padding:0; border:1px solid var(--line); border-radius:50%; background:#fff; color:var(--muted); font-size:12px; font-weight:700; line-height:1; cursor:pointer; }
 .field-help:hover, .field-help:focus { border-color:var(--teal); color:var(--teal); }
+/* 面板标题右边的“？”：说明收进弹窗，不再铺在页面上 */
+h2.with-help, h3.with-help { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.panel-help { vertical-align:middle; }
 .field > label { display:inline-flex; align-items:center; gap:6px; }
 /* 设置项说明弹窗 */
 .rule-help-card { width:min(600px,100%); max-height:88vh; }
@@ -330,10 +425,8 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
 .avatar { flex:0 0 auto; display:inline-flex; align-items:center; justify-content:center; width:var(--avatar-size,28px); height:var(--avatar-size,28px); padding:0; border:1px solid transparent; border-radius:50%; overflow:hidden; background:hsl(var(--avatar-hue,190),40%,88%); color:var(--teal); font-weight:800; font-size:calc(var(--avatar-size,28px) * .42); line-height:1; }
 .avatar-img { display:block; width:100%; height:100%; object-fit:cover; }
 .avatar-initial { transform:translateY(1px); }
-.avatar-empty { border-style:dashed; border-color:rgba(15,118,110,.45); }
 button.avatar { cursor:pointer; }
 button.avatar:hover { border-color:var(--teal); }
-.avatar-note { color:var(--muted); font-size:12px; }
 .student-main { display:flex; align-items:center; gap:8px; }
 .student-main-text { flex:1 1 auto; min-width:0; }
 .candidate { justify-content:flex-start; }
