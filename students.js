@@ -101,12 +101,7 @@ ${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc
 </div>`;
     
   // 返回：回到进入详情页之前所在的页面，且不重绘该页面（保留其原有状态与滚动位置）
-  // 返回：退一条浏览器历史（和安卓返回键完全一致，历史层负责把视图与详情还原）
-  $('#backStudents').onclick=()=>{
-    if(history.length>1&&!navApplying){history.back();return;}
-    // 兜底（没有历史可退时）：按原来的方式就地关闭
-    const from=state.studentDetailFrom||'students';state.studentDetail=null;state.studentExamExpand=false;renderStudents();const el=$('#view-students');if(el)el.scrollTop=state.studentListScroll||0;if(from!=='students')goToView(from);
-  };
+  $('#backStudents').onclick=()=>{const from=state.studentDetailFrom||'students';state.studentDetail=null;state.studentExamExpand=false;renderStudents();const el=$('#view-students');if(el)el.scrollTop=state.studentListScroll||0;if(from!=='students')goToView(from);};
   // 点名记录里的“详情”按钮与小字问题行（该生问题记录弹窗）
   $$('#view-students [data-student-questions]').forEach(b=>b.onclick=()=>openStudentQuestions(b.dataset.studentQuestions,{onClose:()=>renderStudentDetail(id)}));
   // 每条记录下方的问题栏：打开全屏问题记录弹窗，并定位到这一条
@@ -129,7 +124,6 @@ function openStudentDetail(id){
   state.studentDetail=id;
   renderStudents();
   goToView('students');
-  navMarkDetail(id);          // 这条历史记录代表“学生页 + 打开着谁的详情”
   scrollViewTop('students');
 }
 function bindStudentActions(){
@@ -351,5 +345,5 @@ function renderStudents(){
     $$('[data-student-sort]').forEach(b=>b.onclick=()=>toggleStudentHeader(b.dataset.studentSort));
     bindStudentActions();
     bindClassChangeBanner();      // 本班班级变动提示条：核对无误 / 撤销这批变动
-    navAfterChange();             // 学生页重绘后同步浏览器历史（详情页进入/退出）
+    
 }
