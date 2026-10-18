@@ -162,6 +162,15 @@ ${aliasClearActionsHtml()}\
 </details>`;
 }
 
+// 上次启动耗时（读数据 + 首屏渲染），排查“冷启动卡顿”时看这个数
+function lastBootHint(){
+  try{
+    const ms=Number(localStorage.getItem('lastBootMs')||'');
+    if(!Number.isFinite(ms)||ms<=0)return '';
+    return ` · 上次启动 ${ms} ms`;
+  }catch(err){return '';}
+}
+
 function renderSettings(){  const s=state.settings,historyOptions=HISTORY_RULE_OPTIONS;
   $('#view-settings').innerHTML=`<div class="panel">\
 <h2 class="with-help">点名参数 ${panelHelpBtn('settings.params','点名参数的说明')}</h2>\
@@ -224,7 +233,7 @@ ${aliasPanelHtml()}\
 <button class="danger" id="clearAllSettingsBtn">删除所有数据</button>\
 </div>\
 </div>\
-<p class="hint app-version">当前版本：${APP_VERSION}</p>`;
+<p class="hint app-version">当前版本：${APP_VERSION}${lastBootHint()}</p>`;
     
   $$('[data-setting],[data-diff]').forEach(el=>el.addEventListener('change',()=>applySettingEdit(el)));
   bindPanelHelp();
