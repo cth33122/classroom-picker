@@ -1,7 +1,9 @@
 // 入口：视图分发、数据加载、service worker 注册
+const BOOT_START=(typeof performance!=='undefined'&&performance.now)?performance.now():Date.now();
+let navBootMs=0;
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v194';
+const APP_VERSION = 'v196';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -21,52 +23,76 @@ function scrollTrackToPage(index){
 // ---------- 浏览器历史 / 安卓返回键 ----------
 // 目标：系统返回键按“界面层级”一层层退 —— 有弹窗先关弹窗；在详情页退回到上一个页面；
 // 只有在**点名页（根页面）且没有弹窗**时，返回才真正离开 App：第一次按给一句提醒，第二次按交给系统退出。
-// 做法：真正的界面层级只在历史里占一条记录（视图那条），另用一条“守卫”记录接住返回键，
-// 这样连续按返回能一层层往下退。滑动切页用 replaceState，免得一次滑动攒出好几条记录。
+//
+// 做法（尽量少的状态，只依赖浏览器自己知道的东西）：
+//   · 启动时把最底那条记录标成 {v:根页面, bottom:1}；
+//   · 切页面时 pushState 记一条 {v:页面}；
+//   · 需要“接住返回键”时（有弹窗 / 在根页面）在栈顶压一条守卫记录 {guard:1}；
+//   · 返回键落在守卫上 → 关掉一层（或提醒退出）；落在别的记录上 → 按记录恢复界面。
+// 这样每个判断都来自 history.state，不依赖内存里另记的计数器，出问题也能自愈。
 const NAV_ROOT='rollcall';
-let navReady=false;       // 初始化完成前不动历史记录
-let navApplying=false;    // 正在按历史记录恢复界面 → 不要再 push
-let navConsuming=false;   // 我们自己调了 history.back() 去“吃掉”那条守卫记录
-let navExitArmed=false;   // 已经提醒过、故意不再压守卫 → 下一次返回直接交给系统退出
-let navModalCount=0;      // 当前弹层数量（MutationObserver 维护）
-let navLevels=0;          // 当前位置之上还有几条记录（0 = 已经在最底那条上，再按就退出）
+let navReady=false;        // 初始化完成前不动历史记录
+let navApplying=false;     // 正在按历史记录恢复界面 → 不要再 push
+let navConsuming=false;    // 我们主动 history.back() 去“吃掉”一条守卫记录
+let navConsumeTimer=0;
+let navExitArmed=false;    // 已经提醒过退出、且仍停在最底那条 → 下一次返回交给系统退出
+let navModalCount=0;       // 当前弹层数量（MutationObserver 维护）
+let navScrollGuard=0;      // 程序化滚动期间抑制“滑动切页”误判
 
-function navDepth(){return navModalCount;}                      // “层”只算弹窗；详情页算页面级
-function navGuardOnTop(){const st=history.state;return Boolean(st&&st.guard);}
+function navDepth(){return navModalCount;}                                  // “层”只算弹窗；详情页算页面级
+function navState(){return history.state||{};}
+function navGuardOnTop(){return Boolean(navState().guard);}
+function navBottomOnTop(){return Boolean(navState().bottom);}
 function navUrl(name){return '#'+name;}
-function navPushView(name,extra){
+function navPush(st){
+  try{history.pushState(st,'',navUrl(st.v||state.view));return true;}catch(err){return false;}
+}
+function navReplace(st){
+  try{history.replaceState(st,'',navUrl(st.v||state.view));return true;}catch(err){return false;}
+}
+function navPushView(name){
   navExitArmed=false;
-  try{history.pushState({v:name,...(extra||{})},'',navUrl(name));navLevels++;}catch(err){}
+  navPush({v:name});
+  navDebugUpdate();
 }
 function navReplaceView(name){
-  try{history.replaceState({v:name},'',navUrl(name));}catch(err){}
+  navReplace({v:name});
+  navDebugUpdate();
 }
-// 把“当前这条记录”补记成带详情页 id 的（点开学生详情时用）
+// 点开学生详情时，把当前这条记录补记成“学生页 + 打开着谁的详情”
 function navMarkDetail(id){
-  const st=history.state||{};
-  try{history.replaceState({...st,v:state.view,d:id||null},'',navUrl(state.view));}catch(err){}
+  navReplace({...navState(),v:state.view,d:id||null});
+  navDebugUpdate();
 }
+// 主动退一条（用于“手动关掉弹窗后把多余的那条守卫吃掉”）；带兜底定时器，避免卡死
 function navConsumeGuard(){
   if(navConsuming)return;
   navConsuming=true;
-  try{history.back();}catch(err){navConsuming=false;}
+  clearTimeout(navConsumeTimer);
+  navConsumeTimer=setTimeout(()=>{navConsuming=false;navAfterChange();},400);   // 万一没等到 popstate 也能自愈
+  try{history.back();}catch(err){navConsuming=false;clearTimeout(navConsumeTimer);}
 }
-// 该不该在栈顶压一条“守卫”：有弹窗时要；在根页面也要（这样返回键会被我们接住）
-function navSyncGuard(){
+function navPushGuard(){
+  return navPush({v:state.view,d:state.studentDetail||null,guard:1});
+}
+// 保证“该有守卫的时候一定有守卫”：有弹窗要有；在根页面也要（除非刚提醒过、正停在最底那条）
+function navEnsureGuard(){
   if(!navReady||navApplying||navConsuming)return;
-  const want=navDepth()>0||state.view===NAV_ROOT;
-  if(!want){navExitArmed=false;return;}
-  // 只有“已经在最底下、什么都没开”时，提醒后的下一次返回才允许直接退出；
-  // 一旦又打开了弹窗（或详情），必须重新压守卫，否则返回会误退出。
-  if(navExitArmed&&navDepth()===0)return;
-  if(navExitArmed)navExitArmed=false;
-  if(!navGuardOnTop()){try{history.pushState({v:state.view,d:state.studentDetail||null,guard:1},'',navUrl(state.view));navLevels++;}catch(err){}}
+  if(navGuardOnTop())return;
+  if(navDepth()>0){navPushGuard();return;}
+  if(state.view!==NAV_ROOT)return;
+  if(!navBottomOnTop())return;                  // 根页面上但脚下还有历史：这一按应该正常回上一页，不压守卫
+  if(navExitArmed)return;                       // 提醒过、且仍停最底那条 → 下一次返回交给系统退出
+  navExitArmed=false;
+  navPushGuard();
 }
-// 界面变化后统一调用：手动关掉的弹窗要把它那条守卫记录吃掉，免得下一次返回“空按一下”
+const navSyncGuard=navEnsureGuard;                // 兼容旧调用名
+// 界面变化后统一调用：手动关掉的弹窗要把它的守卫记录吃掉，避免下一次返回“空按一下”
 function navAfterChange(){
   if(!navReady||navApplying)return;
-  if(navDepth()===0&&state.view!==NAV_ROOT&&navGuardOnTop()){navConsumeGuard();return;}
-  navSyncGuard();
+  if(navDepth()===0&&state.view!==NAV_ROOT&&navGuardOnTop()){navConsumeGuard();navDebugUpdate();return;}
+  navEnsureGuard();
+  navDebugUpdate();
 }
 // 按“落到的那条记录”恢复界面（返回/前进/bfcache 恢复都走这里，不再 push）
 function navApplyEntry(st){
@@ -93,27 +119,26 @@ function navCloseTopLayer(){
   return true;
 }
 window.addEventListener('popstate',event=>{
+  clearTimeout(navConsumeTimer);
   const st=event.state||{};
-  const fromView=state.view;                                                        // 这一按“从哪个页面退出”
-  navLevels=Math.max(0,navLevels-1);                                                 // 往后退了一层
-  if(navConsuming){navConsuming=false;navApplyEntry(st);navAfterChange();return;}    // 我们自己吃守卫
-  if(navDepth()>0){navApplyEntry(st);navCloseTopLayer();navAfterChange();return;}     // 有弹窗先关弹窗
+  const fromView=state.view;
+  if(navConsuming){navConsuming=false;navApplyEntry(st);navAfterChange();return;}   // 我们自己吃守卫
+  if(navDepth()>0){navApplyEntry(st);navCloseTopLayer();navAfterChange();return;}    // 有弹窗先关弹窗
   navApplyEntry(st);
-  // 本来就在根页面、又按了返回：提醒一次，且故意不压守卫 → 再按一次由系统退出
-  if(state.view===NAV_ROOT&&navDepth()===0&&fromView===NAV_ROOT&&navLevels===0){
+  // 本来就在根页面、又按了返回：提醒一次；这里故意不再压守卫 → 再按一次由系统退出
+  if(state.view===NAV_ROOT&&navDepth()===0&&fromView===NAV_ROOT&&navBottomOnTop()){
     navExitArmed=true;
     toast('再按一次返回键退出');
+    navDebugUpdate();
     return;
   }
   navAfterChange();
 });
 // 弹窗都是临时创建后 append 到 body：用 MutationObserver 统一感知开/关，不必改动那二十来处弹窗代码
 function navWatchModals(){
-  const isModal=n=>{
-    if(!n||n.nodeType!==1)return false;
-    if(n.classList&&n.classList.contains('modal-backdrop'))return true;
-    return Boolean(n.querySelector&&n.querySelector('.modal-backdrop'));
-  };
+  // 只观察 body 的直接子节点：全仓 23 处弹窗都是 document.body.appendChild(模态框)，
+  // 而各个页面的重绘发生在 .view 内部 —— 不监听 subtree 就不会被每次重绘触发，开销接近 0。
+  const isModal=n=>Boolean(n&&n.nodeType===1&&n.classList&&n.classList.contains('modal-backdrop'));
   try{
     new MutationObserver(records=>{
       let touched=false;
@@ -126,38 +151,54 @@ function navWatchModals(){
       if(n===navModalCount)return;
       navModalCount=n;
       navAfterChange();
-    }).observe(document.body,{childList:true,subtree:true});
+    }).observe(document.body,{childList:true});   // ← 不再 subtree:true
   }catch(err){}
 }
 // iOS Safari 的后退缓存（bfcache）恢复时，界面要跟历史记录对齐
 window.addEventListener('pageshow',event=>{
   if(!event.persisted)return;
-  navApplyEntry(history.state||{});
+  navApplyEntry(navState());
   navModalCount=$$('.modal-backdrop').length;
   navAfterChange();
 });
-// 启动：把初始视图写进当前记录；URL 带 #视图名 时按它打开（刷新后停在原页）
+// ?debug=1：手机上直接看到历史状态（排查返回键用，不影响正常使用）
+function navDebugOn(){return /[?&]debug=1/.test(location.search);}
+function navDebugUpdate(){
+  if(!navDebugOn())return;
+  let box=document.getElementById('navDebugBox');
+  if(!box){box=document.createElement('div');box.id='navDebugBox';box.className='nav-debug';document.body.appendChild(box);}
+  const st=navState();
+  const bits=[];
+  if(st.v)bits.push('view:'+st.v);
+  if(st.d)bits.push('detail');
+  if(st.guard)bits.push('GUARD');
+  if(st.bottom)bits.push('BOTTOM');
+  box.textContent=`view=${state.view}  depth=${navDepth()}  exitArmed=${navExitArmed?1:0}  applying=${navApplying?1:0}  consuming=${navConsuming?1:0}\nhist=${history.length}  state=${bits.join(',')||'(空)'}  boot=${navBootMs}ms\nurl=${location.hash||'(无)'}`;
+}
+// 启动：把初始视图写进最底那条记录；URL 带 #视图名 时按它打开（刷新后停在原页）
 function navInit(){
+  navReady=false;navExitArmed=false;navConsuming=false;navApplying=false;
+  clearTimeout(navConsumeTimer);
   const hash=String(location.hash||'').replace(/^#/,'');
   const start=VIEW_NAMES.includes(hash)?hash:state.view;
-  const base=start===NAV_ROOT?NAV_ROOT:NAV_ROOT;     // 底下永远垫一条“点名页”记录
-  try{history.replaceState({v:base},'',navUrl(base));}catch(err){}
-  navLevels=0;
+  navReplace({v:NAV_ROOT,bottom:1});                       // 最底那条永远标成“根页面”
   if(start!==state.view){navApplying=true;try{goToView(start);}finally{navApplying=false;}}
-  if(start!==NAV_ROOT){try{history.pushState({v:start},'',navUrl(start));navLevels=1;}catch(err){}}   // 再压上真正的起始页
+  if(start!==NAV_ROOT)navPush({v:start});                  // 直接打开某页时，再压上真正的起始页
   navWatchModals();
   navModalCount=$$('.modal-backdrop').length;
   navReady=true;
-  navSyncGuard();
+  navEnsureGuard();
+  navDebugUpdate();
 }
 
 function goToView(name){
   const index=VIEW_NAMES.indexOf(name);if(index<0)return;
   viewIndex=index;
   highlightView(name);
+  navScrollGuard=Date.now()+250;       // 这一小段内的滚动事件是程序化切页造成的
   scrollTrackToPage(index);
   if(!navApplying)navPushView(name);   // 主动切页 → 记一条历史，返回键才能退回来
-  navSyncGuard();
+  navEnsureGuard();
 }
 function highlightView(name){
   state.view=name;
@@ -185,10 +226,11 @@ $$('.tab').forEach(tab=>tab.addEventListener('click',()=>setActiveView(tab.datas
 window.addEventListener('resize',()=>{viewIndex=Math.max(0,VIEW_NAMES.indexOf(state.view));scrollTrackToPage(viewIndex);});
 // 滑动/滚动后同步当前页与标签高亮（页面不重绘，状态与滚动位置都保留）
 trackEl?.addEventListener('scroll',()=>{
+  if(navScrollGuard>Date.now())return;      // 程序化切页引起的滚动，不算“用户滑动”
   const index=Math.max(0,Math.min(VIEW_NAMES.length-1,Math.round(trackEl.scrollLeft/trackWidth())));
-  if(index!==viewIndex){viewIndex=index;highlightView(VIEW_NAMES[index]);navReplaceView(VIEW_NAMES[index]);navSyncGuard();}
+  if(index!==viewIndex){viewIndex=index;highlightView(VIEW_NAMES[index]);navReplaceView(VIEW_NAMES[index]);navEnsureGuard();}
 },{passive:true});
-window.addEventListener('load',async()=>{if('serviceWorker'in navigator){const hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!window.__swReloaded){window.__swReloaded=true;location.reload();}});navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(()=>{});}try{await reload();}catch(err){toast(`本地数据初始化失败：${err.message}`);}navInit();let deferred;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;$('#installBtn').hidden=false;});$('#installBtn').addEventListener('click',async()=>{if(deferred){deferred.prompt();deferred=null;}});});
+window.addEventListener('load',async()=>{if('serviceWorker'in navigator){const hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!window.__swReloaded){window.__swReloaded=true;location.reload();}});navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(()=>{});}try{await reload();}catch(err){toast(`本地数据初始化失败：${err.message}`);}navInit();navBootMs=Math.round(((typeof performance!=='undefined'&&performance.now)?performance.now():Date.now())-BOOT_START);try{console.info(`[启动] 首次加载+首次渲染共 ${navBootMs} ms`);}catch(err){}navDebugUpdate();let deferred;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;$('#installBtn').hidden=false;});$('#installBtn').addEventListener('click',async()=>{if(deferred){deferred.prompt();deferred=null;}});});
 // Keep exam stores in the reload transaction and preserve an empty previous exam for the oldest exam.
 
 function render(){
