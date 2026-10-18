@@ -1,7 +1,7 @@
 // 入口：视图分发、数据加载、service worker 注册
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v203';
+const APP_VERSION = 'v209';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -23,6 +23,7 @@ function goToView(name){
   viewIndex=index;
   highlightView(name);
   scrollTrackToPage(index);
+  backEnterView(name);          // 记进返回栈（返回键用它决定“回哪一页”）
 }
 function highlightView(name){
   state.view=name;
@@ -45,7 +46,7 @@ trackEl?.addEventListener('scroll',()=>{
   const index=Math.max(0,Math.min(VIEW_NAMES.length-1,Math.round(trackEl.scrollLeft/trackWidth())));
   if(index!==viewIndex){viewIndex=index;highlightView(VIEW_NAMES[index]);}
 },{passive:true});
-window.addEventListener('load',async()=>{if('serviceWorker'in navigator){const hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!window.__swReloaded){window.__swReloaded=true;location.reload();}});navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(()=>{});}try{await reload();}catch(err){toast(`本地数据初始化失败：${err.message}`);}let deferred;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;$('#installBtn').hidden=false;});$('#installBtn').addEventListener('click',async()=>{if(deferred){deferred.prompt();deferred=null;}});});
+window.addEventListener('load',async()=>{if('serviceWorker'in navigator){const hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!window.__swReloaded){window.__swReloaded=true;location.reload();}});navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(()=>{});}try{await reload();}catch(err){toast(`本地数据初始化失败：${err.message}`);}initBackGuard();let deferred;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;$('#installBtn').hidden=false;});$('#installBtn').addEventListener('click',async()=>{if(deferred){deferred.prompt();deferred=null;}});});
 // Keep exam stores in the reload transaction and preserve an empty previous exam for the oldest exam.
 
 function render(){
@@ -68,6 +69,125 @@ function render(){
  highlightView(state.view);
   viewIndex=Math.max(0,VIEW_NAMES.indexOf(state.view));
   scrollTrackToPage(viewIndex);
+}
+
+// ---------- 安卓返回键接管（仅逻辑，不改界面） ----------
+// 原理：Navigation API 的 navigate 事件在“后退”真正发生之前触发，且可取消（canIntercept）。
+// 于是每次后退：先关最上层（弹窗 → 学生详情 → 上一页面），然后取消这次后退；
+// 没有任何层可退（也就是站在首页）时，屏幕下方浮起一条纯文字气泡“再按一次返回键退出”
+//   （几秒后自动消失）；再按一次返回＝直接退出。
+// 不需要往历史里塞记录，也不需要在返回之后再补记录（后者在安卓上会被浏览器忽略）。
+// 注意：Navigation API 在非安全上下文（http://192.168.x.x）里可能不存在；
+// 不存在时本模块不启用，返回键保持浏览器原样。
+const BACK_ROOT='rollcall';
+const backViewStack=[BACK_ROOT];
+let backReady=false;
+let backArmed=false;          // 已经提醒过“再按一次退出”
+const BACK_LOG=[];
+function backLog(msg){
+  try{
+    BACK_LOG.push(msg);
+    if(BACK_LOG.length>40)BACK_LOG.shift();
+    console.log('[返回键] '+msg);
+  }catch(err){}
+}
+function backCurrentView(){return backViewStack[backViewStack.length-1]||BACK_ROOT;}
+function backModalCount(){return document.querySelectorAll('.modal-backdrop').length;}
+function backAtFirstEntry(){
+  try{
+    const n=window.navigation;
+    return Boolean(n&&n.currentEntry&&n.currentEntry.index===0);
+  }catch(err){return false;}
+}
+// 记录页面切换（供“返回上一页”用）
+function backEnterView(name){
+  if(!backReady)return;
+  if(name!==backCurrentView())backViewStack.push(name);
+  backArmed=false;
+  backLog('进入 '+name+'（栈 '+backViewStack.join('>')+'）');
+}
+// 站在第一条记录上时补一条“垫底记录”，让第一次后退有东西可退（从而能被拦截）
+function backArm(){
+  if(!backReady||backArmed)return;
+  if(!backAtFirstEntry())return;
+  try{
+    history.pushState({backGuard:1},'',location.href);
+    backLog('垫底记录已压入（等用户可能的后退）');
+  }catch(err){backLog('垫底失败：'+(err&&err.message));}
+}
+function backCloseTopModal(){
+  const modals=document.querySelectorAll('.modal-backdrop');
+  if(!modals.length)return false;
+  const top=modals[modals.length-1];
+  const btn=top.querySelector('.modal-close');
+  if(btn){btn.click();return true;}
+  top.remove();
+  if(!document.querySelectorAll('.modal-backdrop').length)document.body.classList.remove('modal-open');
+  return true;
+}
+function backCloseDetail(){
+  if(!state.studentDetail)return false;
+  const backTo=state.studentDetailFrom||'students';
+  state.studentDetail=null;
+  state.studentExamExpand=false;
+  if(backTo!==backCurrentView()&&backViewStack.length>1)backViewStack.pop();
+  renderStudents();
+  const el=document.getElementById('view-students');
+  if(el)el.scrollTop=state.studentListScroll||0;
+  backLog('退出学生详情 → '+backCurrentView());
+  return true;
+}
+// ---------- 首页返回提醒：底部一条纯文字气泡 ----------
+// 站在首页按返回时，屏幕下方浮起一条消息气泡“再按一次返回键退出”，几秒后自动消失。
+// 没有按钮：气泡只是提醒，再按一次返回键才真的退出。
+// 退一层；返回 true 表示“已处理，应取消这次后退”
+function backHandleLayer(){
+  if(backCloseTopModal()){backLog('关闭弹窗');return true;}
+  if(backCloseDetail())return true;
+  if(backViewStack.length>1){
+    backViewStack.pop();
+    const target=backCurrentView();
+    backLog('返回上一页 → '+target);
+    goToView(target);
+    return true;
+  }
+  return false;
+}
+function initBackGuard(){
+  if(!window.navigation||typeof window.navigation.addEventListener!=='function'){
+    backLog('没有 Navigation API（非 HTTPS/localhost），不接管返回键');
+    return;
+  }
+  backReady=true;
+  backLog('已接管返回键');
+  window.navigation.addEventListener('navigate',event=>{
+    try{
+      if(event.navigationType!=='traverse')return;      // 只处理前进/后退
+      if(!event.canIntercept)return;                    // 交给浏览器（例如离开页面）
+      const here=window.navigation.currentEntry;
+      if(here&&event.destination&&typeof event.destination.index==='number'&&event.destination.index>here.index){
+        backLog('前进（不是返回），不拦截');
+        return;
+      }
+      backLog('后退：视图 '+backCurrentView()+'、弹层 '+backModalCount()+'、已提醒 '+backArmed);
+      if(backHandleLayer()){
+        event.preventDefault();                          // 取消这次后退，界面已由我们处理
+        backArmed=false;
+        backLog('已处理并取消后退');
+        return;
+      }
+      if(!backArmed){
+        backArmed=true;
+        backLog('提醒退出（再按一次才退出）');
+        toast('再按一次返回键退出');
+        return;                                          // 不取消：消耗掉那条垫底记录
+      }
+      backLog('放行（退出程序）');
+    }catch(err){backLog('处理后退出错：'+(err&&err.message));}
+  });
+  // 用户每次触摸/点击后，若又回到第一条记录，就再补一条垫底记录（手势时机一定生效）
+  document.addEventListener('pointerdown',()=>{try{backArm();}catch(err){}},{passive:true});
+  backArm();
 }
 
 async function reload(){
