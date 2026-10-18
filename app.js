@@ -3,7 +3,7 @@ const BOOT_START=(typeof performance!=='undefined'&&performance.now)?performance
 let navBootMs=0;
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v200';
+const APP_VERSION = 'v202';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -85,8 +85,7 @@ function navEnsureGuard(){
   if(navGuardOnTop())return;
   if(navDepth()>0){navPushGuard();return;}
   if(state.view!==NAV_ROOT)return;
-  if(!navBottomOnTop())return;      // 根页面上但脚下还有历史：这一按应该正常回上一页，不压守卫
-  if(navExitArmed)return;           // 提醒过、且仍停最底那条 → 下一次返回交给系统退出
+  if(navExitArmed)return;           // 提醒过 → 下一次返回交给系统退出（不再补守卫）
   navExitArmed=false;
   navPushGuard();
 }
@@ -127,7 +126,7 @@ window.addEventListener('popstate',event=>{
   if(navDepth()>0){navApplyEntry(st);navCloseTopLayer();navAfterChange();return;}   // 有弹窗先关弹窗
   navApplyEntry(st);
   // 本来就在根页面、又按了返回：提醒一次，且不再补守卫 → 再按一次由系统退出
-  if(state.view===NAV_ROOT&&navDepth()===0&&fromView===NAV_ROOT&&navBottomOnTop()){
+  if(state.view===NAV_ROOT&&navDepth()===0&&fromView===NAV_ROOT){
     navExitArmed=true;
     navTrace('提醒退出');
     toast('再按一次返回键退出');
@@ -241,7 +240,7 @@ trackEl?.addEventListener('scroll',()=>{
   const index=Math.max(0,Math.min(VIEW_NAMES.length-1,Math.round(trackEl.scrollLeft/trackWidth())));
   if(index!==viewIndex){viewIndex=index;highlightView(VIEW_NAMES[index]);navReplaceView(VIEW_NAMES[index]);navEnsureGuard();}
 },{passive:true});
-window.addEventListener('load',async()=>{if('serviceWorker'in navigator){const hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!window.__swReloaded){window.__swReloaded=true;location.reload();}});navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(()=>{});}try{await reload();}catch(err){toast(`本地数据初始化失败：${err.message}`);}navInit();navBootMs=Math.round(((typeof performance!=='undefined'&&performance.now)?performance.now():Date.now())-BOOT_START);try{localStorage.setItem('lastBootMs',String(navBootMs));}catch(err){}try{console.info(`[启动] 首次加载+首次渲染共 ${navBootMs} ms`);}catch(err){}navDebugUpdate();checkStaleHtml();let deferred;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;$('#installBtn').hidden=false;});$('#installBtn').addEventListener('click',async()=>{if(deferred){deferred.prompt();deferred=null;}});});
+window.addEventListener('load',async()=>{if('serviceWorker'in navigator){const hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!window.__swReloaded){window.__swReloaded=true;location.reload();}});navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(()=>{});}try{await reload();}catch(err){toast(`本地数据初始化失败：${err.message}`);}navInit();navBootMs=Math.round(((typeof performance!=='undefined'&&performance.now)?performance.now():Date.now())-BOOT_START);try{localStorage.setItem('lastBootMs',String(navBootMs));}catch(err){}try{console.info(`[启动] 首次加载+首次渲染共 ${navBootMs} ms`);}catch(err){}navDebugUpdate();checkStaleHtml();updateVersionBadge();let deferred;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;$('#installBtn').hidden=false;});$('#installBtn').addEventListener('click',async()=>{if(deferred){deferred.prompt();deferred=null;}});});
 // Keep exam stores in the reload transaction and preserve an empty previous exam for the oldest exam.
 
 function render(){
@@ -275,6 +274,16 @@ function checkStaleHtml(){
     const htmlVer=String(window.__HTML_VER||'').replace(/^v/,'');
     const appVer=String(APP_VERSION).replace(/^v/,'');
     if(!htmlVer||htmlVer===appVer)return;
+    // 先自动修一次：跳到带版本参数的地址，浏览器必然取最新的 index.html 与脚本
+    try{
+      if(!sessionStorage.getItem('staleAutoFix')){
+        sessionStorage.setItem('staleAutoFix','1');
+        const url=location.pathname+'?v='+encodeURIComponent(appVer)+(location.hash||'');
+        navTrace('版本不一致 → 自动跳转 '+url);
+        location.replace(url);
+        return;
+      }
+    }catch(err){}
     const bar=document.createElement('div');
     bar.id='cacheWarn';
     bar.className='cache-warn';
@@ -284,6 +293,25 @@ function checkStaleHtml(){
     $('#cacheWarnReload').onclick=()=>{
       const url=location.pathname+'?v='+encodeURIComponent(appVer)+(location.hash||'');
       location.replace(url);
+    };
+  }catch(err){}
+}
+
+// 顶部版本徽标：一眼看出手机上跑的是哪一版（排查“改了没效果”用）
+function updateVersionBadge(){
+  try{
+    const b=document.getElementById('verBadge');
+    if(!b)return;
+    b.textContent=String(APP_VERSION);
+    const htmlVer=String(window.__HTML_VER||'').replace(/^v/,'');
+    const appVer=String(APP_VERSION).replace(/^v/,'');
+    b.classList.toggle('is-stale',Boolean(htmlVer&&htmlVer!==appVer));
+    b.title=htmlVer&&htmlVer!==appVer
+      ? `页面是旧缓存：HTML v${htmlVer} / 程序 v${appVer}，点这里强制刷新`
+      : `当前版本 ${APP_VERSION}${lastBootHint?('，'+lastBootHint().replace(/^ · /,'')):''}`;
+    b.onclick=()=>{
+      if(htmlVer&&htmlVer!==appVer){location.replace(location.pathname+'?v='+encodeURIComponent(appVer)+(location.hash||''));return;}
+      toast(`版本 ${APP_VERSION}${lastBootHint?lastBootHint():''}`);
     };
   }catch(err){}
 }

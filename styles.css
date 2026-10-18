@@ -466,3 +466,6 @@ button.avatar:hover { border-color:var(--teal); }
 /* 旧缓存提示条（只在 HTML 与程序版本不一致时出现） */
 .cache-warn { position:fixed; left:8px; right:8px; top:8px; z-index:120; display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px 10px; border-radius:8px; background:#fff8f7; border:1px solid #f3c2bd; color:#b42318; font-size:13px; box-shadow:0 6px 18px rgba(0,0,0,.12); }
 .cache-warn button { min-height:30px; padding:4px 10px; font-size:13px; }
+/* 顶部标题旁的版本徽标（点一下看版本与启动耗时；版本不一致时变红） */
+.ver-badge { border:1px solid var(--line); background:#fff; color:var(--muted); border-radius:999px; padding:1px 7px; font-size:11px; font-weight:700; vertical-align:middle; cursor:pointer; }
+.ver-badge.is-stale { border-color:#f3c2bd; background:#fff8f7; color:var(--danger); }
