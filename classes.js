@@ -296,7 +296,7 @@ function openClassAdjust(){
   closeClassAdjust();
   const all=classList();
   const source=all.includes(state.currentClass)?state.currentClass:(all[0]||'');
-  if(!all.length){toast('还没有学生，先导入成绩名单');return;}
+  if(!all.length){toast('还没有学生，先导入名册或成绩');return;}
   const modal=document.createElement('div');
   modal.id='classAdjustModal';modal.className='modal-backdrop';
   modal.innerHTML=`<div class="modal-card class-adjust-card" role="dialog" aria-modal="true">\

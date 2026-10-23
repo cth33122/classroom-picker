@@ -114,11 +114,15 @@ function chooseCandidates(students, history, absences, config) {
   const calledToday = new Set(history.filter(x => x.studentId && timestampLocalDate(x.at) === today).map(x => x.studentId));
   const allowSameDayRepeat = String(config.sameDayRepeat) === 'allow';
   const available = rankedPool(students.filter(s => !absent.has(s.id) && !s.noCall && (allowSameDayRepeat || !calledToday.has(s.id))));
-  const range = difficultyRange(available.length, config.currentDifficulty || 2, config);
-  const eligible = available.slice(range.start - 1, range.end);
+  // 本班一场成绩都没有时（例如刚导入名册），位次百分位没有意义：
+  // 这时不再按“百分位”截取，全班同权进入候选，只保留上面这些排除与权重规则。
+  const hasRank = available.some(s => rankValue(s) !== null);
+  const range = hasRank ? difficultyRange(available.length, config.currentDifficulty || 2, config) : { start: 1, end: available.length };
+  const eligible = hasRank ? available.slice(range.start - 1, range.end) : available;
   const scored = eligible.map(student => ({ student, score: recommendationScore(student, history, config),
     recentCount: recentHistoryEntries(history, student.id, config).length }));
   scored.forEach((item, index) => {
+    if (!hasRank) { item.student.lowScoreNoRecent = false; item.score = recommendationScore(item.student, history, config); return; }
     const position = available.indexOf(item.student) / Math.max(1, available.length - 1);
     item.student.lowScoreNoRecent = position >= 1 - Number(config.lowScorePercentile || 0.6)
       && item.recentCount === 0;

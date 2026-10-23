@@ -220,6 +220,16 @@ body.modal-open .view-track { touch-action:none; }
 .seat-import-note.group, .seat-import-note.empty { color:var(--muted); }
 .seat-import-note.info::before { content:'✓'; color:var(--teal); }
 .seat-import-card textarea { width:100%; min-height:130px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; font:inherit; font-size:14px; resize:vertical; }
+/* 导入结果：未对上的名字（可展开）+ “是不是 XXX” 确认行 */
+.seat-unmatched { margin:0 0 10px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; background:#fff; }
+.seat-unmatched summary { cursor:pointer; font-size:14px; }
+.seat-unmatched p { margin:6px 0 0; }
+.seat-fuzzy-list { display:grid; gap:8px; margin:10px 0 4px; }
+.seat-fuzzy-row { display:flex; align-items:center; gap:8px; padding:6px 0; border-bottom:1px solid var(--line); }
+.seat-fuzzy-row:last-child { border-bottom:0; }
+.seat-fuzzy-cell { flex:0 0 auto; max-width:45%; font-weight:700; overflow-wrap:anywhere; }
+.seat-fuzzy-arrow { flex:0 0 auto; color:var(--muted); }
+.seat-fuzzy-row select { flex:1 1 auto; min-width:0; min-height:36px; border:1px solid var(--line); border-radius:6px; padding:4px 6px; font:inherit; font-size:13px; }
 .student-link { border:0; padding:0; background:transparent; color:var(--name-ink); font:inherit; font-weight:700; text-align:left; }
 /* 学生姓名统一用中性黑（学生页/统计页姓名、点名页候选与结果卡、点名页座位表）
    注意：要排除 .seat-sel（选中=白字）、.seat-vacant（空位=灰）、.seat-focus（关注=暗红），

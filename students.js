@@ -13,7 +13,7 @@ ${avatarHtml(s,{size:34})}\
 <span class="student-main-text">\
 <button class="student-link ${focusNameClass(s)}" data-student-detail="${esc(s.id)}">${esc(display)}</button>${s.noCall?' <span class="badge no-call-badge">不参与点名</span>':''}\
 <br>\
-<small class="hint">${latest?`${l.score}分`:'缺考'}</small>\
+<small class="hint">${latest?`${l.score}分`:(exams.length?'缺考':'—')}</small>\
 </span>\
 </span>\
 <span class="rank-info">班次：${latest?(l.classRank??'—'):'—'} ${hasComparison&&latest?rankDelta(l.classRank,previous?.classRank):''}<br>段次：${latest?(l.gradeRank??'—'):'—'} ${hasComparison&&latest?rankDelta(l.gradeRank,previous?.gradeRank):''}</span>\
@@ -101,7 +101,7 @@ ${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc
 </div>`;
     
   // 返回：回到进入详情页之前所在的页面，且不重绘该页面（保留其原有状态与滚动位置）
-  $('#backStudents').onclick=()=>{const from=state.studentDetailFrom||'students';state.studentDetail=null;state.studentExamExpand=false;renderStudents();const el=$('#view-students');if(el)el.scrollTop=state.studentListScroll||0;if(from!=='students')goToView(from);};
+  $('#backStudents').onclick=()=>closeStudentDetail();
   // 点名记录里的“详情”按钮与小字问题行（该生问题记录弹窗）
   $$('#view-students [data-student-questions]').forEach(b=>b.onclick=()=>openStudentQuestions(b.dataset.studentQuestions,{onClose:()=>renderStudentDetail(id)}));
   // 每条记录下方的问题栏：打开全屏问题记录弹窗，并定位到这一条
@@ -126,6 +126,24 @@ function openStudentDetail(id){
   goToView('students');
   scrollViewTop('students');
 }
+// 从学生详情退出：从哪进来就回哪去（座位表所在的点名页 / 统计页 / 学生列表），
+// 同时把返回栈里那条“学生”弹掉，保证后续按返回键的走向和界面一致。
+// 页面本身不重绘，所以来源页的滚动位置与座位表展开状态都保持原样。
+function closeStudentDetail(){
+  if(!state.studentDetail)return false;
+  const from=state.studentDetailFrom||'students';
+  state.studentDetail=null;
+  state.studentExamExpand=false;
+  renderStudents();
+  const el=$('#view-students');
+  if(el)el.scrollTop=state.studentListScroll||0;
+  if(from!==(state.view||'students')){
+    if(typeof backViewStack!=='undefined'&&backViewStack.length>1)backViewStack.pop();
+    goToView(from);
+  }
+  return true;
+}
+
 function bindStudentActions(){
   $$('[data-student-detail]').forEach(b=>b.onclick=()=>openStudentDetail(b.dataset.studentDetail));
   // 整行也可以点进详情页；行内的按钮（姓名、注音、备注…）优先

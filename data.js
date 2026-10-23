@@ -1,11 +1,11 @@
 // 数据页：导入成绩、考试编辑、备份恢复、清除数据
 
 // 这一页各面板的说明：不再是页面上的大段小字，改成标题右边的“？”弹窗
-registerPanelHelp('data.import','导入成绩文件',
-  `<p>支持“数智作业”“学生小题得分明细”等 xlsx。</p>\
-<p>若一个工作簿含多个以<strong>“考试名称-日期”</strong>（如 周测8-20270124）命名的工作表，会分别导入为多场考试。</p>\
-<p>学生身份以<strong>“班级+姓名”</strong>为准；学号/考号可选，但建议保留——<strong>同名同学要靠它来区分</strong>，导入时也会顺手记下来，以后同名时自动认人。</p>\
-<p>导入后班级变动会立即生效，并在对应班级的学生页顶部提示核对（可在“班级变动记录”里整批核对或撤销）。</p>`);
+registerPanelHelp('data.import','数据导入',
+  `<p><strong>导入成绩</strong>：支持“数智作业”“学生小题得分明细”等 xlsx。若一个工作簿含多个以<strong>“考试名称-日期”</strong>（如 周测8-20270124）命名的工作表，会分别导入为多场考试。</p>\
+<p><strong>导入名册</strong>：只建学生档案、<strong>不写任何成绩</strong>，适合“还没有任何成绩，先建班、排座位、导头像、点名”的场景。支持 xlsx / csv / txt：表头里要有 <strong>姓名</strong>（写成“学生姓名”也认），可选 <strong>班级</strong>、<strong>学号</strong>（“考号/编号/学籍号”同样认）；没有表头时可以贴两列「班级 姓名」，或只贴一列姓名（班级用顶部当前选中的班级，都没有时会弹窗让你填一个）。</p>\
+<p><strong>两个按钮都适用</strong>：学生身份以<strong>“班级+姓名”</strong>为准；学号/考号可选，但建议保留——<strong>同名同学要靠它来区分</strong>，导入时也会顺手记下来，以后同名时自动认人。先导名册后导成绩（或反过来）都不会重复建人。</p>\
+<p>成绩导入后班级变动会立即生效，并在对应班级的学生页顶部提示核对（可在“班级变动记录”里整批核对或撤销）；名册导入则只认“已经存在的跳过、没有的新建”，只有一个班时会自动把当前班级切过去。</p>`);
 registerPanelHelp('data.backup','备份与恢复',
   `<p>“立即备份”会立刻下载一个备份文件，包含学生、成绩、点名记录（含评价与问题）、座位表与设置。</p>\
 <p>“导入备份文件”用备份文件<strong>覆盖本机数据</strong>，操作前会再确认一次。</p>\
@@ -14,7 +14,8 @@ registerPanelHelp('data.avatar','学生头像',
   () => `<p>头像包就是一个 zip：照片放进去，再放一份 <strong>manifest.csv</strong>（列：班级、学号、姓名、文件名）说明谁是谁。</p>\
 <p>不想写清单也行——照片文件名里带学号或姓名（如 <code>20260101.jpg</code>、<code>张三.jpg</code>、<code>张三_头像.jpg</code>）会自动对上；<strong>同名同学请写学号，或写成“张三(2)”这种带序号的名字</strong>，否则系统不会猜。</p>\
 <p>导入时统一压成 ${AVATAR_SIZE}×${AVATAR_SIZE} 的 JPEG，存本机。</p>\
-<p>只给个别学生设置：到“学生”页点开他，点头像（或“设置头像”链接）即可拍照或选图，并能拖动、缩放裁剪。当前本机已存 <strong>${photoCount()}</strong> 张头像。</p>`);
+<p>只给个别学生设置：到“学生”页点开他，点头像（或“设置头像”链接）即可拍照或选图，并能拖动、缩放裁剪。当前本机已存 <strong>${photoCount()}</strong> 张头像。</p>\
+<p><strong>导出头像包</strong>会把本机已裁好的头像（${AVATAR_SIZE}×${AVATAR_SIZE}，方形 JPEG）打成一个 zip：包内文件名就是学生姓名（同名的会补上班号），另外还带一份清单，换设备时用它导回去即可；范围跟当前选择的班级一致。</p>`);
 registerPanelHelp('data.classAdjust','调整班级',
   `<p>分班 / 换班在这里做：选“从哪个班调整”，勾选学生，再选“调到哪个班”（也可以直接输入一个新班级名，等于整班改名）。</p>\
 <p><strong>点名历史、评价、问题记录、头像都会跟着学生走</strong>——它们按身份关联，不随班级变化。</p>\
@@ -365,13 +366,152 @@ function openExamEditor(id){
     
 }
 
+// ---------- 导名学生名册 ----------
+// 只建学生档案、不写成绩：这样即使一场考试都没有，也能建班、排座位、导头像、点名。
+// 以后导入成绩时靠“班级+姓名/学号”认人，不会重复建人。
+const ROSTER_NAME_FIELDS=['姓名','学生姓名','学生','名字'];
+const ROSTER_CLASS_FIELDS=['班级','班别','所在班级','班级名称','班'];
+const ROSTER_ID_FIELDS=['学号','考号','自定义考号','编号','学籍号','准考证号','考籍号','考生号'];
+
+// “01”“1”“01班”“初一1班”这类单元格当成班级列（用于识别没有表头的两列表格）
+function rosterLooksLikeClass(text){
+  const t=norm(text);
+  return /^\d{1,2}(班)?$/.test(t)||/班$/.test(t);
+}
+// 把表格行解析成 [{name,className,no}]；className 为空表示这一行没写班级（由调用方补）
+function parseRosterRows(rows){
+  // 单格但又带制表符/多个空格/全角空格的（从 Word、微信里粘出来的），先拆成多列
+  const splitCells=cells=>(cells.length===1&&/\t| {2,}|\u3000/.test(String(cells[0])))?String(cells[0]).split(/\t| {2,}|\u3000+/).map(s=>s.trim()).filter(Boolean):cells;
+  const clean=(rows||[]).map(r=>splitCells((r||[]).map(v=>String(v==null?'':v).trim()))).filter(r=>r.some(v=>v!==''));
+  const out=[];
+  if(!clean.length)return out;
+  let headerIndex=-1,header=null;
+  for(let i=0;i<Math.min(clean.length,10);i++){
+    const cells=clean[i].map(norm);
+    if(cells.some(c=>ROSTER_NAME_FIELDS.includes(c))){headerIndex=i;header=cells;break;}
+  }
+  if(headerIndex>=0){
+    const nameIdx=fieldIndex(header,ROSTER_NAME_FIELDS);
+    const classIdx=fieldIndex(header,ROSTER_CLASS_FIELDS,['班次','班主任','排名']);
+    const idIdx=fieldIndex(header,ROSTER_ID_FIELDS);
+    for(let i=headerIndex+1;i<clean.length;i++){
+      const cells=clean[i];
+      out.push({
+        name:nameIdx>=0?String(cells[nameIdx]||'').trim():'',
+        className:classIdx>=0?String(cells[classIdx]||'').trim():'',
+        no:idIdx>=0?String(cells[idIdx]||'').trim():''
+      });
+    }
+    return out;
+  }
+  // 没有表头：多数行第一格像班级 → 按“班级 姓名 [学号]”；否则按“姓名 [学号]”
+  const classFirst=clean.filter(r=>r.length>=2&&rosterLooksLikeClass(r[0])).length>=Math.max(1,Math.ceil(clean.length/2));
+  const cleanNo=v=>/^[A-Za-z0-9_-]{3,}$/.test(String(v||'').trim())?String(v).trim():'';
+  clean.forEach(cells=>{
+    if(classFirst){
+      out.push({name:String(cells[1]||'').trim(),className:String(cells[0]||'').trim(),no:cleanNo(cells[2])});
+    }else{
+      out.push({name:String(cells[0]||'').trim(),className:'',no:cleanNo(cells[1])});
+    }
+  });
+  return out;
+}
+// 名册里没写班级、本机也没有选中班级时，问一次班级名（复用通用输入弹窗）
+function rosterClassPrompt(suggested){
+  return promptTextModal({
+    title:'这批学生属于哪个班？',
+    hint:'名册里有行没写班级，本机也还没有选中班级。填一个班级名即可（例如 <code>01班</code>），以后可以再调整。',
+    label:'班级',
+    value:suggested||'',
+    placeholder:'例如 01班'
+  });
+}
+async function handleRosterImport(e){
+  const file=e.target.files[0],input=e.target;
+  if(!file)return;
+  input.value='';                    // 允许再次选择同一个文件
+  if(importBusy){toast('正在保存，请稍候');return;}
+  let rows=[];
+  try{
+    const lower=String(file.name||'').toLowerCase();
+    if(lower.endsWith('.xlsx')){
+      // 一个工作簿可能前面还有封面/说明页：取第一个能读出姓名的表
+      const sheets=await parseXlsx(file)||[];
+      for(const sheet of sheets){
+        const parsed=parseRosterRows(sheet.rows||[]);
+        if(parsed.some(row=>row.name&&!isPlaceholderName(norm(row.name)))){rows=sheet.rows||[];break;}
+      }
+      if(!rows.length&&sheets.length)rows=sheets[0].rows||[];
+    }else rows=parseDelimited(await file.text());
+  }catch(err){
+    toast('读不了这个文件：'+((err&&err.message)||'请确认是 xlsx / csv / txt'));
+    return;
+  }
+  // 拿成绩表来导名册时先提醒一句：名册不写成绩，别白导
+  const headText=(rows||[]).slice(0,10).map(r=>(r||[]).map(norm).join('|')).join('|');
+  if(/成绩|分数|总分|得分|均分/.test(headText)&&!confirm('这看起来像一份成绩表。用“导入名册”只会建立学生档案，不会导入任何成绩。\n\n如果是要导成绩，请用左边的“导入成绩”。仍然按名册导入吗？'))return;
+  const parsed=parseRosterRows(rows);
+  if(!parsed.length){toast('名册里没读到内容');return;}
+  const picked=[];
+  let badName=0;
+  parsed.forEach(row=>{
+    const name=norm(row.name);
+    if(!name||isPlaceholderName(name)){badName++;return;}
+    const rawClass=norm(row.className);
+    picked.push({name,className:rawClass?normalizeClassName(rawClass):'',no:String(row.no||'').trim()});
+  });
+  if(!picked.length){toast('名册里没找到学生姓名（表头需要“姓名”列）');return;}
+  // 没写班级的行：先用当前选中的班级，仍然没有就弹窗问一次
+  let fallback=normalizeClassName(state.currentClass||'');
+  if(fallback==='未分班')fallback='';
+  if(picked.some(x=>!x.className)&&!fallback){
+    const answer=await rosterClassPrompt('');
+    if(answer===null){toast('已取消导入');return;}
+    fallback=normalizeClassName(answer);
+  }
+  const existing=new Set((state.students||[]).filter(s=>s&&s.name).map(s=>`${normalizeClassName(s.className)}-${s.name}`));
+  const added=[],seen=new Set();
+  let dups=0,noClass=0;
+  picked.forEach(item=>{
+    const className=item.className||fallback;
+    if(!className||className==='未分班'){noClass++;return;}
+    const key=`${className}-${item.name}`;
+    if(seen.has(key)||existing.has(key)){dups++;return;}
+    seen.add(key);
+    const student={id:key,className,name:item.name,focus:false,noCall:false};
+    if(item.no){
+      student.sourceExamId=item.no;
+      student.ids=[{type:'学号',value:item.no,source:'名册导入',seenAt:localDate(),origin:key}];
+    }
+    added.push(student);
+  });
+  if(!added.length){
+    toast(dups?`名册里的人都已存在（${dups} 人），没有新增`:'没有可新增的学生');
+    return;
+  }
+  importBusy=true;
+  try{
+    await DB.putMany('students',added);
+    const importedClasses=[...new Set(added.map(s=>s.className))];
+    if(importedClasses.length===1&&normalizeClassName(state.currentClass||'')!==importedClasses[0])setCurrentClass(importedClasses[0]);
+    await refreshAfterDataImport();
+    const scope=importedClasses.length===1?importedClasses[0]:`${importedClasses.length} 个班`;
+    const extra=[dups?`已存在 ${dups} 人未重复添加`:'',badName?`忽略 ${badName} 行（没有姓名）`:'',noClass?`忽略 ${noClass} 行（没有班级）`:''].filter(Boolean).join('；');
+    toast(`名册已导入：${scope} 新增 ${added.length} 人${extra?'（'+extra+'）':''}；现在可以排座位、导头像、点名了`);
+  }catch(err){
+    toast('导入名册失败：'+((err&&err.message)||'未知错误'));
+  }finally{
+    importBusy=false;
+  }
+}
+
 function renderData(){
   const exams=orderedExams();
-  $('#view-data').innerHTML=`<div class="panel">\
-<h2 class="with-help">导入成绩文件 ${panelHelpBtn('data.import','导入成绩文件的说明')}</h2>\
+  $('#view-data').innerHTML=`<div class="panel" id="dataImportPanel">\
+<h2 class="with-help">数据导入 ${panelHelpBtn('data.import','数据导入的说明')}</h2>\
 <div class="data-import-actions">\
-<input id="xlsxInput" class="file-input" type="file" accept=".xlsx">\
-<button class="secondary" id="downloadTemplateBtn">下载成绩导入模板</button>\
+<label class="secondary restore-label" title="支持 xlsx">导入成绩<input id="xlsxInput" type="file" accept=".xlsx" hidden></label>\
+<label class="secondary restore-label" title="支持 xlsx / csv / txt">导入名册<input id="rosterInput" type="file" accept=".xlsx,.csv,.txt" hidden></label>\
 </div>\
 <div id="importResult">\
 </div>\
@@ -402,6 +542,7 @@ function renderData(){
 <h2 class="with-help">学生头像 ${panelHelpBtn('data.avatar','学生头像的说明')}</h2>\
 <div class="data-import-actions">\
 <label class="secondary restore-label">导入头像包（zip）<input id="avatarZipInput" type="file" accept=".zip,application/zip" hidden></label>\
+<button class="secondary" id="avatarExportBtn">导出头像包（zip）</button>\
 <button class="secondary" id="avatarManifestBtn">下载本班头像清单模板</button>\
 </div>\
 </div>\
@@ -420,8 +561,8 @@ ${classBatchListHtml()}\
 <button class="danger" id="clearBtn">清除全部本地数据</button>\
 </div>`;
     
-  $('#xlsxInput')?.addEventListener('change',handleImport);$('#downloadTemplateBtn')?.addEventListener('click',downloadGradeTemplate);$('#backupNowBtn')?.addEventListener('click',exportBackup);$('#backupInput')?.addEventListener('change',handleRestore);$('#clearBtn')?.addEventListener('click',clearAll);$$('[data-open-exam]').forEach(b=>b.onclick=()=>openExamEditor(b.dataset.openExam));
-  $('#avatarZipInput')?.addEventListener('change',handleAvatarZipImport);$('#avatarManifestBtn')?.addEventListener('click',downloadAvatarManifest);
+  $('#xlsxInput')?.addEventListener('change',handleImport);$('#rosterInput')?.addEventListener('change',handleRosterImport);$('#backupNowBtn')?.addEventListener('click',exportBackup);$('#backupInput')?.addEventListener('change',handleRestore);$('#clearBtn')?.addEventListener('click',clearAll);$$('[data-open-exam]').forEach(b=>b.onclick=()=>openExamEditor(b.dataset.openExam));
+  $('#avatarZipInput')?.addEventListener('change',handleAvatarZipImport);$('#avatarExportBtn')?.addEventListener('click',exportAvatarPackage);$('#avatarManifestBtn')?.addEventListener('click',downloadAvatarManifest);
   $('#classAdjustBtn')?.addEventListener('click',openClassAdjust);
   bindClassBatchList();
   bindPanelHelp();

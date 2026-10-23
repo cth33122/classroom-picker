@@ -417,6 +417,17 @@ function seatEditorChartHtml(layout,ctx){
     +'</div>';
 }
 async function openSeatEditor(){
+  // 空库（还没有任何班级）时也能打开：先问一个班级名，之后可以先导座位表、再把名字建成学生
+  if(!state.currentClass){
+    const name=await promptTextModal({
+      title:'这批座位属于哪个班？',
+      hint:'本机还没有任何班级。填一个班级名（例如 <code>01班</code>），就可以先导入座位表，再把座位上的名字直接建成这个班的学生。',
+      label:'班级',placeholder:'例如 01班'
+    });
+    if(!name)return;
+    setCurrentClass(name);
+    await loadSeatLayout(true);
+  }
   await loadSeatLayout();
   if(!state.seatLayout){toast('当前班级还没有座位表');return;}
   const base=copyLayout(state.seatLayout);
@@ -938,23 +949,106 @@ function normalizeSeatList(rows){
   info.notes.push({msg:'按清单式表格识别（列/排/姓名），共 '+entries.length+' 条','kind':'info'});
   return {cols:info.cols,rows:info.rows,grid,sideL:sideL?sideL.name:null,sideR:sideR?sideR.name:null,info};
 }
+// 姓名容错：座位表里常见“张三（组长）”“张 三”“张三 3组”这类写法，先归一化再比
+const SEAT_NAME_REMARK=/[（(【\[][^）)】\]]*[）)】\]]/g;                       // 括号里的备注
+const SEAT_NAME_TAIL=/(组长|组员|班长|副班长|课代表|劳动委员|体育委员|同学|\d+号|第?\d+组)$/;
+function seatNameKey(text){
+  return String(text||'').replace(/\s+/g,'').replace(SEAT_NAME_REMARK,'').replace(SEAT_NAME_TAIL,'').trim();
+}
 function findStudentByName(name){
   const target=String(name||'').trim();if(!target)return null;
   const list=seatClassStudents();
-  return list.find(s=>(s.displayName||'')===target)||list.find(s=>s.name===target)||null;
+  const exact=list.find(s=>(s.displayName||'')===target)||list.find(s=>s.name===target);
+  if(exact)return exact;
+  // 去空格、去括号备注、去“组长/3组”这类后缀后再比一次；归一化后对到多人就不猜
+  const key=seatNameKey(target);
+  if(!key)return null;
+  const loose=list.filter(s=>seatNameKey(s.displayName||s.name)===key);
+  return loose.length===1?loose[0]:null;
 }
-// 用导入结果覆盖当前班级座位表；返回 {placed,unmatched}
-function applySeatImport(normalized){
+// 还差一个字的名字：同长度、首字相同、只有一位不同（中文姓名里基本就是错别字）
+function seatNameNear(cell,students){
+  const key=seatNameKey(cell);
+  if(!key||key.length<2)return [];
+  return (students||[]).filter(s=>{
+    const k=seatNameKey(s.displayName||s.name);
+    if(k.length!==key.length||k===key||k[0]!==key[0])return false;
+    let diff=0;
+    for(let i=0;i<k.length;i++)if(k[i]!==key[i])diff++;
+    return diff===1;
+  });
+}
+// 导入前先找出“对不上、但像是写错了”的单元格，供老师确认绑定
+function seatFuzzyRows(normalized){
+  const students=seatClassStudents(),seen=new Set(),rows=[];
+  ((normalized&&normalized.grid)||[]).forEach(row=>(row||[]).forEach(cell=>{
+    const text=String(cell||'').trim();
+    if(!text||seen.has(text))return;
+    const marker=seatMarker(text);
+    if(marker||isSeatLabelCell(text))return;
+    if(findStudentByName(text))return;
+    const near=seatNameNear(text,students);
+    if(!near.length)return;
+    seen.add(text);
+    rows.push({cell:text,suggestions:near.map(s=>({id:s.id,name:s.displayName||s.name,className:s.className||''}))});
+  }));
+  return rows;
+}
+// “是不是 XXX？”确认弹窗：每个疑似写错的名字给一个下拉，默认选中唯一的建议
+function seatConfirmFuzzy(rows){
+  return new Promise(resolve=>{
+    document.getElementById('seatFuzzyModal')?.remove();
+    const modal=document.createElement('div');
+    modal.id='seatFuzzyModal';modal.className='modal-backdrop';
+    const list=rows.map((row,i)=>{
+      const opts=row.suggestions.map(s=>`<option value="${esc(s.id)}">${esc(s.name)}${s.className?'（'+esc(s.className)+'）':''}</option>`).join('');
+      return `<div class="seat-fuzzy-row"><span class="seat-fuzzy-cell">${esc(row.cell)}</span><span class="seat-fuzzy-arrow" aria-hidden="true">→</span><select data-fuzzy-index="${i}"><option value="">不绑定</option>${opts}</select></div>`;
+    }).join('');
+    modal.innerHTML=`<div class="modal-card seat-import-card" role="dialog" aria-modal="true">\
+<div class="modal-header"><h2>这几个名字是不是写错了？</h2><button type="button" class="icon-button modal-close" aria-label="关闭">×</button></div>\
+<p class="hint">这些单元格的名字在班内名单里没找到，但只差一个字。确认是同一个人的话，座位会自动坐上去；不确定就选“不绑定”。</p>\
+<div class="seat-fuzzy-list">${list}</div>\
+<div class="actions">\
+<button type="button" class="secondary" id="seatFuzzyCancel">取消导入</button>\
+<button type="button" class="primary" id="seatFuzzyOk">按上面这些绑定</button>\
+</div>\
+</div>`;
+    document.body.appendChild(modal);
+    // 只有一个建议时默认选中它（常见情况就是错别字）
+    modal.querySelectorAll('select[data-fuzzy-index]').forEach(sel=>{
+      if(sel.options.length===2)sel.selectedIndex=1;
+    });
+    const close=value=>{modal.remove();resolve(value);};
+    modal.querySelector('.modal-close').onclick=()=>close(null);
+    modal.onclick=ev=>{if(ev.target===modal)close(null);};
+    $('#seatFuzzyCancel').onclick=()=>close(null);
+    $('#seatFuzzyOk').onclick=()=>{
+      const picks=rows.map((_,i)=>{
+        const sel=modal.querySelector(`select[data-fuzzy-index="${i}"]`);
+        return sel?sel.value:'';
+      });
+      close(picks);
+    };
+  });
+}
+// 用导入结果覆盖当前班级座位表；overrides: Map(单元格原文 → 学生 id)，来自“是不是 XXX”的确认
+// 返回 {placed,unmatched}
+function applySeatImport(normalized,overrides){
   const layout=state.seatLayout||defaultSeatLayout();
   const seats=[];
   const unmatched=[];
+  const pickStudent=name=>{
+    const forced=overrides&&typeof overrides.get==='function'?overrides.get(name):null;
+    if(forced){const hit=state.students.find(s=>s.id===forced);if(hit)return hit;}
+    return findStudentByName(name);
+  };
   for(let row=1;row<=normalized.rows;row++){
     for(let col=1;col<=normalized.cols;col++){
       const name=normalized.grid[row-1][col-1];
       let studentId=null;
       const marker=seatMarker(name);
       if(name&&!(marker&&marker.empty)){
-        const stu=findStudentByName(name);
+        const stu=pickStudent(name);
         if(stu)studentId=stu.id;else unmatched.push(name);
       }
       seats.push({id:'c'+col+'r'+row,col:col,row:row,kind:'normal',studentId:studentId});
@@ -962,8 +1056,8 @@ function applySeatImport(normalized){
   }
   const sideName=normalized.sideL,sideNameR=normalized.sideR;
   if(sideName||sideNameR||layout.sideSeats){
-    const leftId=sideName?((findStudentByName(sideName)||{}).id||null):null;
-    const rightId=sideNameR?((findStudentByName(sideNameR)||{}).id||null):null;
+    const leftId=sideName?((pickStudent(sideName)||{}).id||null):null;
+    const rightId=sideNameR?((pickStudent(sideNameR)||{}).id||null):null;
     if(sideName&&!leftId)unmatched.push(sideName);
     if(sideNameR&&!rightId)unmatched.push(sideNameR);
     seats.push({id:'sideL',col:0,row:0,kind:'side',studentId:leftId,label:'讲台左'});
@@ -983,10 +1077,33 @@ async function importSeatFile(file){
   else rows=parseSeatTableText(await file.text());
   return finishSeatImport(rows);
 }
+// 最近一次座位表导入的上下文：给“一键建档”和“撤销本次导入”用
+let lastSeatImport=null;
 async function finishSeatImport(rows){
+  // 还没有任何班级（空库第一件事就是导座位表）：先问一个班级名
+  if(!state.currentClass){
+    const name=await promptTextModal({
+      title:'这批座位属于哪个班？',
+      hint:'本机还没有任何班级。填一个班级名（例如 <code>01班</code>），导入后可以把座位上的名字直接建成这个班的学生。',
+      label:'班级',placeholder:'例如 01班'
+    });
+    if(!name)return;
+    setCurrentClass(name);
+    await loadSeatLayout(true);
+  }
   const normalized=normalizeSeatRows(rows,seatImportView());
-  const beforeSaved=copyLayout(state.seatLayout);   // applySeatImport 会就地改写 state.seatLayout，先留底
-  const {placed,unmatched}=applySeatImport(normalized);
+  // 先问“是不是写错了”，确认后再落座
+  const fuzzy=seatFuzzyRows(normalized);
+  let overrides=null;
+  if(fuzzy.length){
+    const picks=await seatConfirmFuzzy(fuzzy);
+    if(picks===null)return;                       // 取消导入
+    overrides=new Map();
+    fuzzy.forEach((row,i)=>{if(picks[i])overrides.set(row.cell,picks[i]);});
+  }
+  // applySeatImport 会就地改写 state.seatLayout，先把“导入前”留底（编辑器里就留草稿那份，撤销才能回到原样）
+  const beforeSaved=copyLayout(seatEditor?seatEditor.layout:state.seatLayout);
+  const {placed,unmatched}=applySeatImport(normalized,overrides);
   const importHint=seatEditor?'（在编辑弹窗里：点“×”→“确认修改”后才保存）':'';
   if(seatEditor){
     // 从编辑弹窗里导入：进草稿，等点“确认修改”才真正保存
@@ -1002,6 +1119,7 @@ async function finishSeatImport(rows){
   $('#seatImportModal')?.remove();
   if(seatEditor)renderSeatEditor();
   renderRollcall();
+  lastSeatImport={normalized,before:beforeSaved,editor:Boolean(seatEditor),placed,unmatched:unmatched.slice()};
   showSeatImportResult(normalized,{placed,unmatched,hint:importHint});
 }
 // 导入结果卡：把“识别成几列几排、哪些列被忽略、有没有旋转、谁没对上”讲清楚
@@ -1013,10 +1131,16 @@ function showSeatImportResult(normalized,result){
   const stats='识别为 '+normalized.cols+' 列 × '+normalized.rows+' 排，'+matched+' 人与班内名单对上（共安排 '+result.placed+' 个座位）'+ver;
   const notes=(info.notes||[]).map(n=>'<li class="seat-import-note '+esc(n.kind||'info')+'">'+esc(n.msg)+'</li>').join('');
   // 一个人名都没对上：多半是这个班的名单还没导入（座位会全是空的），必须说清楚
-  const noMatch=matched?'':'<p class="hint"><strong>注意：一个姓名都没对上班内名单。</strong>请先在“成绩导入”里导入这个班的名单，再来导入座位表。</p>';
-  const unmatched=result.unmatched&&result.unmatched.length
-    ?'<p class="hint"><strong>没对上班内名单的单元格：</strong>'+esc(result.unmatched.slice(0,12).join('、'))+(result.unmatched.length>12?' 等 '+result.unmatched.length+' 个':'')+'<br>这些单元格保持空位，可用“按名册填充”或手动落座补齐。</p>'
+  const noMatch=matched?'':'<p class="hint"><strong>注意：一个姓名都没对上班内名单。</strong>可以点下面的“把这些人建成学生”直接建档，或先到“数据导入”里导入名册/成绩。</p>';
+  const missing=[...new Set((result.unmatched||[]).map(x=>String(x||'').trim()).filter(Boolean))];
+  const unmatched=missing.length
+    ?`<details class="seat-unmatched"${missing.length<=12?' open':''}>\
+<summary><strong>没对上班内名单的单元格（${missing.length} 个）</strong></summary>\
+<p class="hint">${missing.map(esc).join('、')}</p>\
+<p class="hint">这些单元格现在是空位：可以把它们建成学生（会自动坐上去），也可以在“编辑座位”里手动落座。</p>\
+</details>`
     :'<p class="hint">没有出现对不上名单的名字。</p>';
+  const canBuild=missing.length>0&&Boolean(state.currentClass);
   const modal=document.createElement('div');
   modal.id='seatImportResult';modal.className='modal-backdrop';
   modal.innerHTML='<div class="modal-card seat-import-card" role="dialog" aria-modal="true">'
@@ -1026,13 +1150,80 @@ function showSeatImportResult(normalized,result){
     +(notes?'<ul class="seat-import-notes">'+notes+'</ul>':'')
     +unmatched
     +(result.hint?'<p class="hint">'+esc(result.hint)+'</p>':'')
-    +'<div class="actions"><button class="primary" id="seatImportOk">知道了</button></div>'
+    +'<div class="actions">'
+    +(canBuild?'<button type="button" class="secondary" id="seatBuildStudents">把这些人建成'+esc(state.currentClass)+'的学生</button>':'')
+    +'<button type="button" class="secondary" id="seatUndoImport">撤销本次导入</button>'
+    +'<button type="button" class="primary" id="seatImportOk">知道了</button>'
+    +'</div>'
     +'</div>';
   document.body.appendChild(modal);
   const close=()=>modal.remove();
   modal.querySelector('.modal-close').onclick=close;
   $('#seatImportOk').onclick=close;
   modal.onclick=e=>{if(e.target===modal)close();};
+  if(canBuild)$('#seatBuildStudents').onclick=()=>seatBuildStudents(missing);
+  $('#seatUndoImport').onclick=()=>undoLastSeatImport();
+}
+// “一键建档”：把座位表里没对上的名字建成当前班的学生，然后重新落座
+let seatBuilding=false;
+async function seatBuildStudents(names){
+  if(seatBuilding)return;
+  if(!lastSeatImport){toast('请先导入座位表');return;}
+  const cls=normalizeClassName(state.currentClass||'');
+  if(!cls||cls==='未分班'){toast('还没有班级，无法建档');return;}
+  const list=[...new Set((names||[]).map(x=>String(x||'').trim()).filter(Boolean))];
+  if(!list.length){toast('没有需要新建的名字');return;}
+  const sample=list.slice(0,20).join('、')+(list.length>20?' 等':'');
+  if(!confirm(`把 ${list.length} 个名字建成 ${cls} 的学生？\n\n${sample}\n\n建好后会自动坐进对应座位（学号可以以后在“学生”页补）。`))return;
+  const existing=new Set((state.students||[]).filter(s=>s&&s.name).map(s=>`${normalizeClassName(s.className)}-${s.name}`));
+  const added=[];
+  list.forEach(name=>{
+    const key=`${cls}-${name}`;
+    if(existing.has(key))return;
+    existing.add(key);
+    added.push({id:key,className:cls,name,focus:false,noCall:false});
+  });
+  if(!added.length){toast('这些名字对应的学生都已经存在');return;}
+  seatBuilding=true;
+  try{
+    await DB.putMany('students',added);
+    await refreshAfterDataImport();          // 重新读库：新学生、班级、座位表都是最新的
+    const normalized=lastSeatImport.normalized;
+    const {placed}=applySeatImport(normalized,null);
+    if(seatEditor){
+      seatEditor.layout=copyLayout(state.seatLayout);
+      seatEditor.dirty=true;
+      renderSeatEditor();
+    }else{
+      await saveSeatLayout(state.seatLayout);
+    }
+    renderRollcall();
+    $('#seatImportResult')?.remove();
+    lastSeatImport={normalized,before:lastSeatImport.before,editor:Boolean(seatEditor),placed,unmatched:[]};
+    showSeatImportResult(normalized,{placed,unmatched:[],hint:seatEditor?'（在编辑弹窗里：点“×”→“确认修改”后才保存）':''});
+    toast(`已把 ${added.length} 个名字建成学生，并坐进对应座位`);
+  }catch(err){
+    toast('建档失败：'+((err&&err.message)||'未知错误'));
+  }finally{
+    seatBuilding=false;
+  }
+}
+// “撤销本次导入”：只还原座位表，学生档案不删（可能已经被点名用到）
+async function undoLastSeatImport(){
+  if(!lastSeatImport){toast('没有可撤销的导入');return;}
+  const snapshot=lastSeatImport;
+  state.seatLayout=copyLayout(snapshot.before);
+  if(snapshot.editor&&seatEditor){
+    seatEditor.layout=copyLayout(snapshot.before);
+    seatEditor.dirty=true;
+    renderSeatEditor();
+  }else{
+    await saveSeatLayout(state.seatLayout);
+  }
+  lastSeatImport=null;
+  $('#seatImportResult')?.remove();
+  renderRollcall();
+  toast('已撤销本次导入（学生档案不会一起删掉）');
 }
 async function exportSeatXlsx(){
   const layout=seatEditor?seatEditor.layout:state.seatLayout;   // 编辑器开着就导出当前草稿
@@ -1080,7 +1271,7 @@ function openSeatImport(){
 <div class="field"><label>或直接粘贴表格（每行一排，用 Tab/逗号分隔）</label>\
 <textarea id="seatImportText" rows="6" placeholder="第一组&#9;&#9;第二组&#10;张三&#9;&#9;李四&#10;王五&#9;&#9;赵六"></textarea></div>\
 <p class="hint"><strong>会自动识别：</strong>排与排之间的空白行会被忽略（学生和学生之间不会留出空排，只写着“门/窗/第一组”的行也不算一排）；大组之间的空列不算座位（不再把空列当成一整组）；“第一组 / 讲台 / 门 / 过道”等标记不会当成姓名；一列里能对上班内名单的姓名少于 ${SEAT_COL_MIN_NAMES} 人时不作为座位列。识别到讲台在表格上方时，把各排上下对调（讲台对齐下方，靠近讲台的学生依然靠近讲台）。</p>\
-<p class="hint">姓名一律用已导入的本班名单核对，所以请先导入学生成绩/名单。另支持清单式表格（表头含 列 / 排 / 姓名）。</p>\
+<p class="hint">姓名一律用本班名单核对，所以请先在“数据导入”里导入学生名册或成绩。另支持清单式表格（表头含 列 / 排 / 姓名）。</p>\
 <div class="actions"><button class="primary" id="seatImportPasteBtn">导入粘贴内容</button></div>\
 </div>`;
   document.body.appendChild(modal);

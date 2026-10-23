@@ -498,3 +498,59 @@ function downloadAvatarManifest(){
   downloadText(`头像清单-${state.currentClass||'全部'}-${localDate()}.csv`,csv,'text/csv;charset=utf-8');
   toast('清单已下载：照片放进 photos/ 并按“文件名”列改名，和清单一起压缩成 zip 再导入');
 }
+
+// ---------- 导出头像包（zip） ----------
+// 导出的就是本机存好的那一版：已经裁成方形、压成 JPEG，不需要再处理。
+// 包内图片直接用学生姓名命名（同名的补上班号/序号），另附一份清单，导回去时还能按清单对上人。
+function avatarExportExt(rec){
+  const type=String((rec&&rec.type)||(rec&&rec.blob&&rec.blob.type)||'image/jpeg').toLowerCase();
+  if(type.includes('png'))return 'png';
+  if(type.includes('webp'))return 'webp';
+  if(type.includes('gif'))return 'gif';
+  if(type.includes('bmp'))return 'bmp';
+  return 'jpg';
+}
+function avatarExportBaseName(student){
+  const raw=String((student&&(student.displayName||student.name))||'').trim();
+  // 文件名里不能出现的字符换成“_”，其余原样（中文姓名当然保留）
+  return raw.replace(/[\\/:*?"<>|\r\n]+/g,'_').trim()||'学生';
+}
+async function exportAvatarPackage(){
+  if(typeof JSZip==='undefined'){toast('压缩包组件还没加载好，请刷新页面重试');return;}
+  const btn=$('#avatarExportBtn');
+  if(btn&&btn.disabled)return;
+  const rawCls=String(state.currentClass||'').trim();
+  const cls=rawCls?normalizeClassName(rawCls):'';
+  const pool=(state.students||[]).filter(s=>s&&(!cls||s.className===cls));
+  const list=pool.filter(s=>photoRecord(s.id)).sort((a,b)=>
+    String(a.className||'').localeCompare(String(b.className||''),'zh-CN')||
+    String(a.displayName||a.name||'').localeCompare(String(b.displayName||b.name||''),'zh-CN')||
+    String(a.id||'').localeCompare(String(b.id||''),'zh-CN'));
+  if(!list.length){
+    toast(cls?`${cls}还没有学生头像`:'还没有任何学生头像');
+    return;
+  }
+  if(btn)btn.disabled=true;
+  toast('正在打包头像…');
+  try{
+    const zip=new JSZip(),used=new Set(),rows=[['班级','学号','姓名','文件名']];
+    list.forEach(s=>{
+      const rec=photoRecord(s.id),ext=avatarExportExt(rec),base=avatarExportBaseName(s);
+      let name=`${base}.${ext}`;
+      if(used.has(name))name=`${base}（${s.className||'本班'}）.${ext}`;      // 跨班同名：补班号
+      for(let n=2;used.has(name);n++)name=`${base}（${s.className||'本班'}${n}）.${ext}`;   // 同班同名：再补序号
+      used.add(name);
+      zip.file(name,rec.blob);
+      rows.push([s.className||'',s.sourceExamId||'',s.displayName||s.name||'',name]);
+    });
+    zip.file('清单.csv','\uFEFF'+rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n'));
+    const blob=await zip.generateAsync({type:'blob'});
+    downloadBlob(`学生头像-${cls||'全部'}-${localDate()}.zip`,blob);
+    const missing=pool.length-list.length;
+    toast(`已导出 ${list.length} 张头像，文件名就是学生姓名${missing?`；另有 ${missing} 人还没有头像`:''}`);
+  }catch(err){
+    toast('导出头像包失败：'+((err&&err.message)||'未知错误'));
+  }finally{
+    if(btn)btn.disabled=false;
+  }
+}

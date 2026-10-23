@@ -1,7 +1,7 @@
 // 入口：视图分发、数据加载、service worker 注册
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v209';
+const APP_VERSION = 'v213';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -127,13 +127,7 @@ function backCloseTopModal(){
 }
 function backCloseDetail(){
   if(!state.studentDetail)return false;
-  const backTo=state.studentDetailFrom||'students';
-  state.studentDetail=null;
-  state.studentExamExpand=false;
-  if(backTo!==backCurrentView()&&backViewStack.length>1)backViewStack.pop();
-  renderStudents();
-  const el=document.getElementById('view-students');
-  if(el)el.scrollTop=state.studentListScroll||0;
+  if(!closeStudentDetail())return false;
   backLog('退出学生详情 → '+backCurrentView());
   return true;
 }
@@ -238,7 +232,7 @@ function resetViewState(){state.candidates=[];state.selectedCandidate=null;state
 // render() 现在会重绘全部页面，这里保留旧名字以兼容既有调用
 function renderAllViews(){render();}
 
-// 导入成绩文件、恢复备份、清除数据后调用：重置临时状态 → 重新读库 → 重绘所有页面
+// 导入成绩/名册、恢复备份、清除数据后调用：重置临时状态 → 重新读库 → 重绘所有页面
 async function refreshAfterDataImport(){
   const hadCandidates=state.candidates.length>0&&!state.selectedCandidate;
   resetViewState();

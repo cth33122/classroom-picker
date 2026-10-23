@@ -132,3 +132,40 @@ function openPanelHelp(key){
   $('#panelHelpOk').onclick=close;
 }
 function bindPanelHelp(){$$('[data-panel-help]').forEach(b=>b.onclick=()=>openPanelHelp(b.dataset.panelHelp));}
+
+// ---------- 通用“填一项文字”弹窗 ----------
+// 例如问班级名。返回 Promise<string|null>：确定返回去掉首尾空白的值，取消/关闭返回 null。
+// options: {title, hint(HTML，可留空), label, value, placeholder, okText}
+function promptTextModal(options){
+  const o=options||{};
+  return new Promise(resolve=>{
+    document.getElementById('promptTextModal')?.remove();
+    const modal=document.createElement('div');
+    modal.id='promptTextModal';modal.className='modal-backdrop';
+    modal.innerHTML=`<div class="modal-card" role="dialog" aria-modal="true">\
+<div class="modal-header"><h2>${esc(o.title||'请填写')}</h2><button type="button" class="icon-button modal-close" aria-label="关闭">×</button></div>\
+<div class="rule-help-body">\
+${o.hint?'<p>'+o.hint+'</p>':''}\
+<div class="field"><label>${esc(o.label||'内容')}</label><input id="promptTextInput" value="${esc(o.value||'')}" placeholder="${esc(o.placeholder||'')}"></div>\
+</div>\
+<div class="actions">\
+<button type="button" class="secondary" id="promptTextCancel">取消</button>\
+<button type="button" class="primary" id="promptTextOk">${esc(o.okText||'确定')}</button>\
+</div>\
+</div>`;
+    document.body.appendChild(modal);
+    const input=modal.querySelector('#promptTextInput');
+    const close=value=>{modal.remove();resolve(value);};
+    const ok=()=>{
+      const value=String(input.value||'').trim();
+      if(!value){toast('请填写'+(o.label||'内容'));input.focus();return;}
+      close(value);
+    };
+    modal.querySelector('.modal-close').onclick=()=>close(null);
+    modal.onclick=ev=>{if(ev.target===modal)close(null);};
+    modal.querySelector('#promptTextCancel').onclick=()=>close(null);
+    modal.querySelector('#promptTextOk').onclick=ok;
+    input.addEventListener('keydown',ev=>{if(ev.key==='Enter'){ev.preventDefault();ok();}});
+    setTimeout(()=>{try{input.focus();}catch(err){}},0);
+  });
+}

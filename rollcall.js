@@ -123,6 +123,8 @@ function renderRollcall(){
     loadSeatLayout().then(()=>{state.seatLoading=false;renderRollcall();}).catch(()=>{state.seatLoading=false;});
   }
   const inClass=state.students.filter(s=>s.className===state.currentClass),rankMap=averageRankMap(inClass);
+  // 本班一场成绩都没有（例如只导了名册）：难度不再按分数分层，提示一句免得误会
+  const noScores=inClass.length>0&&[...rankMap.values()].every(v=>v===null);
   // 候选是生成时的快照，标签等实时状态一律回查当前学生数据；已标记“不参与点名”的从列表里去掉
   const liveOf=c=>state.students.find(x=>x.id===c.student.id)||c.student;
   const visible=state.candidates.filter(c=>c.student.id===state.selectedCandidate||!liveOf(c).noCall);
@@ -225,6 +227,7 @@ ${candidateArea}${!state.selectedCandidate&&visible.length===0&&state.currentCla
 <button class="secondary difficulty-button ${!state.selectedCandidate&&state.difficulty===2?'active':''}" data-difficulty="2">适中</button>\
 <button class="secondary difficulty-button ${!state.selectedCandidate&&state.difficulty===3?'active':''}" data-difficulty="3">困难</button>\
 </div>\
+${noScores?'<p class="hint">本班还没有成绩，三档难度都按同权随机（不按分数分层），其余规则照旧。</p>':''}\
 </div>`;
   $('#rulesBtn').onclick=()=>openRollcallRules();
   // 点“座位表”标题收起/展开；收起后候选项会换成大头像，选择记在本机
@@ -324,6 +327,7 @@ function openRollcallRules(){
 <p><strong>抽中权重</strong>：近期被点得越多，抽中权重越低；<strong>近期没有被点到的学生抽中权重会升高</strong>，因此更容易被抽到。特别关注的学生不受“越点越低”的衰减影响，除非手动取消关注。</p>\
 <p><strong>当天重复点名</strong>：${allowRepeat?'允许 —— 当天已点过的学生仍可再次进入候选。':'不允许 —— 当天已点过的学生不再进入候选。'}</p>\
 <p><strong>其他</strong>：标记为“不参与点名”的学生不会进入候选；成绩靠后的学生（范围见设置页）在近期零次点名时还会获得额外加权。</p>\
+<p><strong>没有成绩时</strong>：如果本班一场成绩都还没有（例如只导入了名册），三档难度都按“同权随机”抽取，不按分数分层，其余规则同上。</p>\
 </div>\
 <div class="actions">\
 <button class="primary" id="rulesClose">知道了</button>\
