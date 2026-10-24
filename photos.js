@@ -45,9 +45,11 @@ async function loadPhotos(){
   avatarUrlCache.forEach((v,k)=>{const rec=map[k];if(!rec||rec.updatedAt!==v.updatedAt){URL.revokeObjectURL(v.url);avatarUrlCache.delete(k);}});
   return map;
 }
-async function saveAvatar(studentId,blob,srcBlob){
+async function saveAvatar(studentId,blob,srcBlob,crop){
   const rec={id:studentId,blob,type:blob.type||'image/jpeg',bytes:blob.size,updatedAt:Date.now()};
   if(srcBlob)rec.srcBlob=srcBlob;                 // 原图压缩版：用于以后反复调整裁剪位置
+  // 记住上次取景（相对视窗的比例，窗口大小变了也能还原），下次打开“头像页”直接就是这张头像的样子
+  if(crop&&Number.isFinite(Number(crop.zoom)))rec.crop=crop;
   await DB.put('photos',rec);
   state.photos=state.photos||{};
   state.photos[studentId]=rec;
@@ -119,12 +121,12 @@ async function squareAvatarBlob(src,w,h){
   return {blob,srcBlob};
 }
 
-// ---------- 单个学生：拍照 / 相册 → 裁剪 ----------
+// ---------- 单个学生：点头像 = 直接打开“头像页”（大图 + 可调整裁剪） ----------
 function closeAvatarMenu(){const el=document.getElementById('avatarMenu');if(el)el.remove();}
-function openAvatarMenu(student){
+// 还没有头像时的小选择框：拍照 / 从相册选
+function openAvatarPicker(student){
   closeAvatarMenu();
   if(!student)return;
-  const has=Boolean(photoRecord(student.id));
   const modal=document.createElement('div');
   modal.id='avatarMenu';modal.className='modal-backdrop';
   modal.innerHTML=`<div class="modal-card avatar-menu-card" role="dialog" aria-modal="true">\
@@ -132,9 +134,8 @@ function openAvatarMenu(student){
 <div class="actions avatar-menu-actions">\
 <button class="primary" id="avatarCameraBtn">拍照</button>\
 <button class="secondary" id="avatarAlbumBtn">从相册或文件选择</button>\
-${has?'<button class="secondary" id="avatarRecropBtn">调整裁剪位置</button><button class="danger" id="avatarRemoveBtn">删除头像</button>':''}\
 </div>\
-<p class="hint">照片只保存在这台设备上，不会上传。选好后可以拖动、缩放、旋转，按正方形裁剪；已设置的头像可以再点“调整裁剪位置”重新取景。</p>\
+<p class="hint">照片只保存在这台设备上，不会上传。选好后可以拖动、缩放、旋转，按正方形裁剪。</p>\
 <input id="avatarCameraInput" type="file" accept="image/*" capture="environment" hidden>\
 <input id="avatarAlbumInput" type="file" accept="image/*" hidden>\
 </div>`;
@@ -156,36 +157,42 @@ ${has?'<button class="secondary" id="avatarRecropBtn">调整裁剪位置</button
   };
   wire('avatarCameraInput','avatarCameraBtn');
   wire('avatarAlbumInput','avatarAlbumBtn');
-  // 已设置头像：用保存的“原图压缩版”重新打开裁剪窗，重新取景（不重新上传）
-  const recrop=$('#avatarRecropBtn');
-  if(recrop)recrop.onclick=async()=>{
-    const srcBlob=avatarSourceBlob(student.id);
-    if(!srcBlob){toast('这张头像没有可重新裁剪的原图，请重新选择照片');return;}
-    close();
-    await openAvatarCrop(student,srcBlob);
-  };
-  const del=$('#avatarRemoveBtn');
-  if(del)del.onclick=async()=>{close();await deleteAvatar(student.id);render();toast('已删除头像');};
+}
+// 点头像的入口：已有头像就直接进“头像页”，不再先弹一层菜单
+async function openStudentAvatar(student){
+  if(!student)return;
+  const rec=photoRecord(student.id);
+  if(!rec){openAvatarPicker(student);return;}
+  const src=avatarSourceBlob(student.id)||rec.blob;
+  await openAvatarCrop(student,src,{legacy:!rec.srcBlob,restore:rec.crop});
 }
 function closeAvatarCrop(){const el=document.getElementById('avatarCrop');if(el)el.remove();}
-async function openAvatarCrop(student,file){
+async function openAvatarCrop(student,file,options){
   closeAvatarCrop();
+  const opts=options||{};
   let url='';
   try{url=URL.createObjectURL(file);}catch(err){toast('无法读取这张图片');return;}
   const S=Math.max(180,Math.min(340,Math.round(Math.min(window.innerWidth||360,window.innerHeight||640)*0.6)));
   const st={rot:0,zoom:1,x:0,y:0,w:0,h:0,cover:1,S};
+  const who=esc(student.displayName||student.name);
+  const hasPhoto=Boolean(photoRecord(student.id));
   const modal=document.createElement('div');
   modal.id='avatarCrop';modal.className='modal-backdrop';
   modal.innerHTML=`<div class="modal-card avatar-crop-card" role="dialog" aria-modal="true">\
-<div class="modal-header"><h2>调整头像</h2><button class="icon-button modal-close" aria-label="关闭">×</button></div>\
+<div class="modal-header"><h2>${who} 的头像</h2><button class="icon-button modal-close" aria-label="关闭">×</button></div>\
 <div class="avatar-crop-view" id="avatarCropView" style="--crop-size:${S}px"><img id="avatarCropImg" alt="" src="${esc(url)}"></div>\
 <div class="avatar-crop-tools">\
 <button class="secondary" id="avatarRotateBtn">旋转 90°</button>\
 <label class="avatar-zoom"><span>缩放</span><input type="range" id="avatarZoom" min="100" max="${Math.round(AVATAR_ZOOM_MAX*100)}" value="100"></label>\
 <button class="secondary" id="avatarResetBtn">复位</button>\
 </div>\
-<p class="hint">拖动图片调整位置，滑块或双指缩放；头像按正方形裁剪，保存成 ${AVATAR_SIZE}×${AVATAR_SIZE}。照片只存在本机。</p>\
-<div class="actions"><button class="secondary" id="avatarCancelBtn">取消</button><button class="primary" id="avatarOkBtn">确定</button></div>\
+<p class="hint">${opts.legacy?'这张头像没有保留原图，只能在现有方图里重新取景；想用完整原图请点“换照片”。':'拖动图片调整位置，滑块或双指缩放；头像按正方形裁剪。'}</p>\
+<div class="actions avatar-crop-actions">\
+<button type="button" class="secondary" id="avatarSwapBtn">换照片</button>\
+${hasPhoto?'<button type="button" class="danger" id="avatarRemoveBtn">删除头像</button>':''}\
+<button class="secondary" id="avatarCancelBtn">取消</button>\
+<button class="primary" id="avatarOkBtn">保存</button>\
+</div>\
 </div>`;
   document.body.appendChild(modal);
   const view=$('#avatarCropView'),img=$('#avatarCropImg'),zoom=$('#avatarZoom');
@@ -193,6 +200,17 @@ async function openAvatarCrop(student,file){
   modal.querySelector('.modal-close').onclick=done;
   $('#avatarCancelBtn').onclick=done;
   modal.onclick=e=>{if(e.target===modal)done();};
+  // 换照片：再选一张（拍照或相册），选完用新图重新打开这个头像页
+  $('#avatarSwapBtn').onclick=()=>openAvatarPicker(student);
+  // 删除：当前学生已有头像时才有这个按钮
+  const removeBtn=$('#avatarRemoveBtn');
+  if(removeBtn)removeBtn.onclick=async()=>{
+    if(!confirm(`删除 ${student.displayName||student.name} 的头像？`))return;
+    done();
+    await deleteAvatar(student.id);
+    render();
+    toast('已删除头像');
+  };
   // 等图片加载完才知道真实尺寸：先算“铺满正方形”的基准比例，用户的缩放再乘上去
   await new Promise(resolve=>{
     if(img.complete&&img.naturalWidth){resolve();return;}
@@ -212,6 +230,15 @@ async function openAvatarCrop(student,file){
     img.style.width=dispW+'px';img.style.height=dispH+'px';
     img.style.transform=`translate(-50%,-50%) translate(${st.x}px,${st.y}px) rotate(${st.rot}deg)`;
   };
+  // 打开已有头像时按上次保存的取景还原，看到的正是当前这张头像（而不是重置到居中）
+  const restore=opts.restore;
+  if(restore&&Number.isFinite(Number(restore.zoom))){
+    st.rot=(Number(restore.rot)||0)%360;
+    st.zoom=Math.max(1,Math.min(AVATAR_ZOOM_MAX,Number(restore.zoom)||1));
+    st.x=(Number(restore.dx)||0)*S;
+    st.y=(Number(restore.dy)||0)*S;
+    syncZoom();
+  }
   apply();
   zoom.oninput=()=>{st.zoom=Math.max(1,Math.min(AVATAR_ZOOM_MAX,Number(zoom.value)/100));apply();};
   $('#avatarRotateBtn').onclick=()=>{st.rot=(st.rot+90)%360;st.x=0;st.y=0;apply();};
@@ -253,15 +280,17 @@ async function openAvatarCrop(student,file){
       ctx.scale(k,k);
       ctx.drawImage(img,-st.w/2,-st.h/2,st.w,st.h);
       const blob=await canvasToBlob(canvas,'image/jpeg',AVATAR_QUALITY);
-      // 顺带存一份“原图压缩版”，以后点“调整裁剪位置”可以从完整画面重新取景
+      // 顺带存一份“原图压缩版”，以后打开“头像页”可以从完整画面重新取景
       let srcBlob=null;
       try{srcBlob=await sourceFrameBlob(img,st.w,st.h);}catch(err){}
-      await saveAvatar(student.id,blob,srcBlob);
+      // 记下这次取景（按视窗比例存），下次点开这个学生的头像时直接还原成这张头像的样子
+      const crop={rot:st.rot,zoom:st.zoom,dx:S?st.x/S:0,dy:S?st.y/S:0};
+      await saveAvatar(student.id,blob,srcBlob,crop);
       done();
       render();
       toast('头像已保存');
     }catch(err){
-      btn.disabled=false;btn.textContent='确定';
+      btn.disabled=false;btn.textContent='保存';
       toast('保存头像失败：'+err.message);
     }
   };

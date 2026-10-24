@@ -110,8 +110,8 @@ ${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc
     if(!rec){toast('这条记录已不存在');renderStudentDetail(id);return;}
     openStudentQuestions(rec.studentId,{focusId:rec.id,onClose:()=>renderStudentDetail(id)});
   });
-  // 头像：点圆形头像打开设置菜单（拍照/相册/删除/调整裁剪）
-  const openAvatar=()=>openAvatarMenu(state.students.find(x=>x.id===id)||s);
+  // 头像：点圆形头像直接打开“头像页”（大图 + 拖动/缩放调整裁剪）；没设过头像时先选拍照或相册
+  const openAvatar=()=>openStudentAvatar(state.students.find(x=>x.id===id)||s);
   $$('#view-students [data-avatar-edit]').forEach(b=>b.onclick=openAvatar);
   $('#detailFocusBtn').onclick=async()=>{s.focus=!s.focus;await DB.put(s);renderStudentDetail(id);toast(s.focus?`已把 ${s.name} 设为关注`:`已取消 ${s.name} 的关注`);};$('#detailNoCallBtn').onclick=async()=>{s.noCall=!s.noCall;await DB.put(s);refreshCandidatesAfterSettings();renderStudentDetail(id);toast(s.noCall?`已把 ${s.name} 标记为不参与点名`:`已恢复 ${s.name} 的候选资格`);};$('#editPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openNoteBtn').onclick=()=>openNoteEditor(id);const examToggleBtn=$('#toggleExamList');if(examToggleBtn)examToggleBtn.onclick=()=>{state.studentExamExpand=!state.studentExamExpand;renderStudentDetail(id);};drawScoreChart(s,trendRecords);$('#toggleScoreMode').onclick=()=>{state.scoreChartMode=scoreChartMode()==='raw'?'rate':'raw';renderStudentDetail(id);};$('#viewScoreChart').onclick=()=>openScoreChart(records);$('#downloadScoreChartInline').onclick=()=>{const canvas=$('#scoreChart');const link=document.createElement('a');link.download='成绩趋势图.png';link.href=canvas.toDataURL('image/png');link.click();};
 }
