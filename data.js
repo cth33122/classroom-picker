@@ -15,7 +15,9 @@ registerPanelHelp('data.avatar','学生头像',
 <p>不想写清单也行——照片文件名里带学号或姓名（如 <code>20260101.jpg</code>、<code>张三.jpg</code>、<code>张三_头像.jpg</code>）会自动对上；<strong>同名同学请写学号，或写成“张三(2)”这种带序号的名字</strong>，否则系统不会猜。</p>\
 <p>导入时统一压成 ${AVATAR_SIZE}×${AVATAR_SIZE} 的 JPEG，存本机。</p>\
 <p>只给个别学生设置：到“学生”页点开他，点头像（或“设置头像”链接）即可拍照或选图，并能拖动、缩放裁剪。当前本机已存 <strong>${photoCount()}</strong> 张头像。</p>\
-<p><strong>导出头像包</strong>会把本机已裁好的头像（${AVATAR_SIZE}×${AVATAR_SIZE}，方形 JPEG）打成一个 zip：包内文件名就是学生姓名（同名的会补上班号），另外还带一份清单，换设备时用它导回去即可；范围跟当前选择的班级一致。</p>`);
+<p><strong>导入头像包</strong>支持<strong>一个压缩包里放多个班</strong>的照片：按学号或姓名自动认人（同名跨班时用清单里的“班级”列、或文件名里的班号，如 <code>张三（01班）.jpg</code>、<code>01班_张三.jpg</code> 来区分），导入完会告诉你涉及了哪些班。</p>\
+<p><strong>导出头像包</strong>会把本机已裁好的头像（${AVATAR_SIZE}×${AVATAR_SIZE}，方形 JPEG）打成一个 zip：包内文件名就是学生姓名（同名的补上班号），另外还带一份清单，换设备时用它导回去即可；可以只导本班，也可以选“全部班级”一次导完。</p>\
+<p><strong>批量调整裁剪</strong>：单寸照常见“人像偏小、脸偏下”，导入后点这里一次把一批头像统一放大、上下对齐（可以只动“本次导入的人”或整个班），不满意能一键撤回；点缩略图还能单独调这一张。</p>`);
 registerPanelHelp('data.classAdjust','调整班级',
   `<p>分班 / 换班在这里做：选“从哪个班调整”，勾选学生，再选“调到哪个班”（也可以直接输入一个新班级名，等于整班改名）。</p>\
 <p><strong>点名历史、评价、问题记录、头像都会跟着学生走</strong>——它们按身份关联，不随班级变化。</p>\
@@ -542,6 +544,7 @@ function renderData(){
 <h2 class="with-help">学生头像 ${panelHelpBtn('data.avatar','学生头像的说明')}</h2>\
 <div class="data-import-actions">\
 <label class="secondary restore-label">导入头像包（zip）<input id="avatarZipInput" type="file" accept=".zip,application/zip" hidden></label>\
+<button class="secondary" id="avatarBatchCropBtn">批量调整裁剪</button>\
 <button class="secondary" id="avatarExportBtn">导出头像包（zip）</button>\
 <button class="secondary" id="avatarManifestBtn">下载本班头像清单模板</button>\
 </div>\
@@ -562,7 +565,7 @@ ${classBatchListHtml()}\
 </div>`;
     
   $('#xlsxInput')?.addEventListener('change',handleImport);$('#rosterInput')?.addEventListener('change',handleRosterImport);$('#backupNowBtn')?.addEventListener('click',exportBackup);$('#backupInput')?.addEventListener('change',handleRestore);$('#clearBtn')?.addEventListener('click',clearAll);$$('[data-open-exam]').forEach(b=>b.onclick=()=>openExamEditor(b.dataset.openExam));
-  $('#avatarZipInput')?.addEventListener('change',handleAvatarZipImport);$('#avatarExportBtn')?.addEventListener('click',exportAvatarPackage);$('#avatarManifestBtn')?.addEventListener('click',downloadAvatarManifest);
+  $('#avatarZipInput')?.addEventListener('change',handleAvatarZipImport);$('#avatarBatchCropBtn')?.addEventListener('click',()=>openAvatarBatchCrop({scope:'class'}));$('#avatarExportBtn')?.addEventListener('click',()=>exportAvatarPackage());$('#avatarManifestBtn')?.addEventListener('click',downloadAvatarManifest);
   $('#classAdjustBtn')?.addEventListener('click',openClassAdjust);
   bindClassBatchList();
   bindPanelHelp();

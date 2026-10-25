@@ -3,7 +3,7 @@
 // 都压成 JPEG：手机原图动辄 3~5MB，直接入库会把 IndexedDB 撑大。
 
 const AVATAR_SIZE=512;          // 头像保存尺寸（正方形）
-const AVATAR_SRC_SIZE=768;      // “原图压缩版”的长边尺寸
+const AVATAR_SRC_SIZE=1024;     // “原图压缩版”的长边尺寸（批量放大取景时要留像素余量）
 const AVATAR_QUALITY=0.86;
 const AVATAR_SRC_QUALITY=0.82;
 const AVATAR_ZOOM_MAX=4;        // 裁剪时最大放大倍数
@@ -119,6 +119,39 @@ async function squareAvatarBlob(src,w,h){
   const blob=await canvasToBlob(canvas,'image/jpeg',AVATAR_QUALITY);
   const srcBlob=await sourceFrameBlob(src,w,h);
   return {blob,srcBlob};
+}
+
+// ---------- 裁剪取景的共用数学 ----------
+// params: {rot, zoom, dx, dy}；dx/dy 是相对“取景框宽/高”的偏移比例（0 = 居中），
+// 与单人头像页存进 photo.crop 的那份完全一致，所以批量取景的结果可以直接写回 crop。
+function avatarCropZoom(value){return Math.max(1,Math.min(AVATAR_ZOOM_MAX,Number(value)||1));}
+// 算出“源图 → 输出正方形”的缩放，以及在这个缩放下横向/纵向还能平移多少（按输出框的比例）
+function avatarCropLimits(w,h,params,out){
+  const zoom=avatarCropZoom(params&&params.zoom);
+  const base=Math.max(out/w,out/h)*zoom;            // 源图像素 → 输出像素
+  const rot=(((Number(params&&params.rot)||0)%360)+360)%360;
+  const swap=rot%180!==0;
+  const boxW=(swap?h:w)*base,boxH=(swap?w:h)*base;  // 旋转 90°/270° 后宽高互换
+  return {zoom,base,limX:Math.max(0,(boxW-out)/2/out),limY:Math.max(0,(boxH-out)/2/out)};
+}
+// 按取景参数把源图裁成 AVATAR_SIZE 的正方形 JPEG（单张保存与批量取景共用这一份）
+function avatarCropBlob(img,w,h,params){
+  const out=AVATAR_SIZE,p=params||{};
+  const {base,limX,limY}=avatarCropLimits(w,h,p,out);
+  const dx=Math.max(-limX,Math.min(limX,Number(p.dx)||0));
+  const dy=Math.max(-limY,Math.min(limY,Number(p.dy)||0));
+  const rot=(((Number(p.rot)||0)%360)+360)%360;
+  const canvas=document.createElement('canvas');
+  canvas.width=out;canvas.height=out;
+  const ctx=canvas.getContext('2d');
+  ctx.fillStyle='#fff';ctx.fillRect(0,0,out,out);        // 万一露出边缘，填白而不是黑
+  ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
+  ctx.translate(out/2,out/2);
+  ctx.translate(dx*out,dy*out);
+  ctx.rotate(rot*Math.PI/180);
+  ctx.scale(base,base);
+  ctx.drawImage(img,-w/2,-h/2,w,h);
+  return canvasToBlob(canvas,'image/jpeg',AVATAR_QUALITY);
 }
 
 // ---------- 单个学生：点头像 = 直接打开“头像页”（大图 + 可调整裁剪） ----------
@@ -268,23 +301,13 @@ ${hasPhoto?'<button type="button" class="danger" id="avatarRemoveBtn">删除头�
     const btn=$('#avatarOkBtn');
     btn.disabled=true;btn.textContent='保存中…';
     try{
-      const canvas=document.createElement('canvas');
-      canvas.width=AVATAR_SIZE;canvas.height=AVATAR_SIZE;
-      const ctx=canvas.getContext('2d');
-      const k=st.cover*st.zoom;                // 原图像素 → 视窗像素
-      ctx.imageSmoothingEnabled=true;ctx.imageSmoothingQuality='high';
-      ctx.translate(AVATAR_SIZE/2,AVATAR_SIZE/2);
-      ctx.scale(AVATAR_SIZE/S,AVATAR_SIZE/S);  // 视窗像素 → 输出像素
-      ctx.translate(st.x,st.y);
-      ctx.rotate(st.rot*Math.PI/180);
-      ctx.scale(k,k);
-      ctx.drawImage(img,-st.w/2,-st.h/2,st.w,st.h);
-      const blob=await canvasToBlob(canvas,'image/jpeg',AVATAR_QUALITY);
+      const crop={rot:st.rot,zoom:st.zoom,dx:S?st.x/S:0,dy:S?st.y/S:0};
+      // 和批量取景用同一套数学，保证两条路裁出来的结果一致
+      const blob=await avatarCropBlob(img,st.w,st.h,crop);
       // 顺带存一份“原图压缩版”，以后打开“头像页”可以从完整画面重新取景
       let srcBlob=null;
       try{srcBlob=await sourceFrameBlob(img,st.w,st.h);}catch(err){}
-      // 记下这次取景（按视窗比例存），下次点开这个学生的头像时直接还原成这张头像的样子
-      const crop={rot:st.rot,zoom:st.zoom,dx:S?st.x/S:0,dy:S?st.y/S:0};
+      // 记下这次取景（按取景框比例存），下次点开这个学生的头像时直接还原成这张头像的样子
       await saveAvatar(student.id,blob,srcBlob,crop);
       done();
       render();
@@ -370,31 +393,57 @@ function resolveAvatarStudent(row,index){
   return {student:null,how:'',ambiguous:cands};
 }
 // 从照片文件名里认人：整名、学号、或“学号_姓名”“姓名(2)”这种带前后缀的写法
-// 班内重名又只写了姓名时返回 {ambiguous}，由调用方提示老师改文件名或补学号，绝不猜
+// 文件名里带班号（如“张三（01班）.jpg”“01班_张三.jpg”）时按班级筛候选，支持整校一起导入；
+// 还是分不清就返回 {ambiguous}，由调用方提示老师改文件名或补学号，绝不猜
+function classHintFromBasename(stem){
+  const text=String(stem||'');
+  const hit=text.match(/(\d{1,2})\s*班/);
+  if(hit)return normalizeClassName(hit[0]);
+  // “01-张三”“1_李四”这种把班号当纯数字前缀的写法
+  const lead=text.match(/^(?:^|[\s_\-—.．·,，、()（）\[\]【】]+)(\d{1,2})(?:[\s_\-—.．·,，、()（）\[\]【】]|$)/);
+  if(lead)return normalizeClassName(lead[1]);
+  return '';
+}
 function studentFromBasename(base,index){
   const stem=String(base||'').replace(PHOTO_FILE_RE,'').trim();
   const compact=norm(stem);
   if(!compact)return null;
   if(index.byNo.has(compact))return {student:index.byNo.get(compact),how:'学号'};
-  const whole=index.byName.get(compact);
-  if(whole&&whole.length===1)return {student:whole[0],how:'姓名'};
-  if(whole&&whole.length>1)return {student:null,how:'',ambiguous:whole};
+  // “学号+姓名”直接连写（如 20260101张三）：取最长的学号前缀/后缀来认人，
+  // 这样整校同名学生在只写“学号姓名”时也不会认错
+  for(let len=Math.min(compact.length-2,12);len>=4;len--){
+    if(index.byNo.has(compact.slice(0,len)))return {student:index.byNo.get(compact.slice(0,len)),how:'学号'};
+  }
+  for(let len=Math.min(compact.length-2,12);len>=4;len--){
+    if(index.byNo.has(compact.slice(-len)))return {student:index.byNo.get(compact.slice(-len)),how:'学号'};
+  }
+  const classHint=classHintFromBasename(stem);
+  const inClass=arr=>{
+    const list=arr||[];
+    if(!classHint)return list;
+    const hit=list.filter(s=>normalizeClassName(s.className)===classHint);
+    return hit.length?hit:list;          // 文件名里的班号对不上学生班级时退回全集，交给别处判断
+  };
+  const whole=inClass(index.byName.get(compact));
+  if(whole.length===1)return {student:whole[0],how:'姓名'};
+  if(whole.length>1)return {student:null,how:'',ambiguous:whole};
   const parts=stem.split(/[\s_\-—.．·,，、()（）\[\]【】]+/).filter(Boolean);
   for(const part of parts){const k=norm(part);if(index.byNo.has(k))return {student:index.byNo.get(k),how:'学号'};}
-  for(const part of parts){const arr=index.byName.get(norm(part));if(arr&&arr.length===1)return {student:arr[0],how:'姓名'};}
+  for(const part of parts){const arr=inClass(index.byName.get(norm(part)));if(arr.length===1)return {student:arr[0],how:'姓名'};}
   let found=null,multi=null;
   index.byName.forEach((arr,k)=>{
     if(found||k.length<2||!compact.includes(k))return;
-    if(arr.length===1)found={student:arr[0],how:'姓名'};
-    else if(!multi)multi={student:null,how:'',ambiguous:arr};
+    const list=inClass(arr);
+    if(list.length===1)found={student:list[0],how:'姓名'};
+    else if(!multi)multi={student:null,how:'',ambiguous:list};
   });
   return found||multi;
 }
-function avatarProgressUi(total){
+function avatarProgressUi(total,title){
   const modal=document.createElement('div');
   modal.id='avatarProgress';modal.className='modal-backdrop';
   modal.innerHTML=`<div class="modal-card avatar-progress-card" role="dialog" aria-modal="true">\
-<h2>正在导入头像</h2>\
+<h2>${esc(title||'正在导入头像')}</h2>\
 <div class="avatar-progress"><span id="avatarProgressBar"></span></div>\
 <p class="hint" id="avatarProgressText">0 / ${total}</p>\
 <p class="hint">每张都会压成 ${AVATAR_SIZE}×${AVATAR_SIZE}，请先不要关闭页面。</p>\
@@ -471,7 +520,7 @@ async function importAvatarPackage(file){
   }
   const ui=avatarProgressUi(jobs.length);
   let processed=0,replaced=0;
-  const failed=[];
+  const failed=[],processedIds=[];
   for(let i=0;i<jobs.length;i++){
     const job=jobs[i];
     ui.update(i,jobs.length,job.student.displayName||job.student.name);
@@ -481,20 +530,30 @@ async function importAvatarPackage(file){
         const {blob,srcBlob}=await squareAvatarBlob(dec.src,dec.w,dec.h);
         if(photoRecord(job.student.id))replaced++;
         await saveAvatar(job.student.id,blob,srcBlob);
+        processedIds.push(job.student.id);
         processed++;
       }finally{dec.release();}
     }catch(err){failed.push((job.student.displayName||job.student.name||'')+'：'+(err.message||'读取失败'));}
   }
   ui.update(jobs.length,jobs.length);
   ui.close();
+  // 记住这批是谁：导入后可以直接“批量调整裁剪”，默认只动这批人
+  lastAvatarImport={ids:processedIds.slice(),at:Date.now()};
+  // 整校一起导时，把涉及的班级也说清楚
+  const touched=[...new Set(processedIds.map(id=>{
+    const s=state.students.find(x=>x.id===id);
+    return s?normalizeClassName(s.className):'';
+  }).filter(Boolean))].sort();
   render();
-  showAvatarImportResult({report,leftover,total:images.length,processed,replaced,failed});
+  showAvatarImportResult({report,leftover,total:images.length,processed,replaced,failed,classes:touched});
 }
-function showAvatarImportResult({report,leftover,total,processed,replaced,failed}){
+function showAvatarImportResult({report,leftover,total,processed,replaced,failed,classes}){
   document.getElementById('avatarImportResult')?.remove();
   const inClass=state.students.filter(s=>!state.currentClass||s.className===state.currentClass);
   const missing=inClass.filter(s=>!photoRecord(s.id));
-  const stats=`压缩包内照片 ${total} 张，成功写入 ${processed} 人的头像${replaced?`（覆盖了 ${replaced} 个已有头像）`:''}`;
+  const classList=Array.isArray(classes)?classes:[];
+  const scopeNote=classList.length>1?`，涉及 ${classList.length} 个班（${classList.slice(0,6).join('、')}${classList.length>6?' 等':''}）`:'';
+  const stats=`压缩包内照片 ${total} 张，成功写入 ${processed} 人的头像${scopeNote}${replaced?`（覆盖了 ${replaced} 个已有头像）`:''}`;
   const notes=[];
   if(report.fromManifest||report.fromFile)notes.push(`按清单对上 ${report.fromManifest} 人，按文件名对上 ${report.fromFile} 人`);
   if(report.dupRows)notes.push(`清单里同一个人写了多行，只用了第一行（${report.dupRows} 行）`);
@@ -510,14 +569,268 @@ function showAvatarImportResult({report,leftover,total,processed,replaced,failed
 <div class="modal-header"><h2>头像导入完成</h2><button class="icon-button modal-close" aria-label="关闭">×</button></div>\
 <p class="seat-import-stats">${esc(stats)}</p>\
 ${notes.length?`<ul class="seat-import-notes">${notes.map(n=>`<li class="seat-import-note info">${esc(n)}</li>`).join('')}</ul>`:''}\
-<div class="actions"><button class="primary" id="avatarImportOk">知道了</button></div>\
+${processed?`<p class="hint">如果人像偏小（单寸照常见），点下面的“批量调整裁剪”，一次把这几张统一放大、上下对齐。</p>`:''}\
+<div class="actions">\
+${processed?`<button type="button" class="secondary" id="avatarBatchBtn">批量调整裁剪</button>`:''}\
+<button class="primary" id="avatarImportOk">知道了</button>\
+</div>\
 </div>`;
   document.body.appendChild(modal);
   const close=()=>modal.remove();
   modal.querySelector('.modal-close').onclick=close;
   $('#avatarImportOk').onclick=close;
+  const batchBtn=$('#avatarBatchBtn');
+  if(batchBtn)batchBtn.onclick=()=>{close();openAvatarBatchCrop({scope:'import'});};
   modal.onclick=e=>{if(e.target===modal)close();};
 }
+// ---------- 批量取景：一次把一批（或整班）头像的裁剪统一调好 ----------
+// 单寸照的常见毛病是“人像偏小、脸偏下”。这里用一组全局参数重新裁剪，
+// 每张都基于已存的“原图压缩版”srcBlob 重算，不需要重新上传压缩包。
+let lastAvatarImport=null;        // 最近一次头像包导入涉及的学生（批量取景默认只动这批）
+let avatarBatchRunning=false;
+const AVATAR_BATCH_PRESETS=[
+  {key:'id',label:'单寸照',zoom:1.6,dx:0,dy:0.12},
+  {key:'close',label:'更近',zoom:2.2,dx:0,dy:0.16},
+  {key:'center',label:'原样居中',zoom:1,dx:0,dy:0},
+];
+// 可选范围：本次导入的人 / 整个班（有头像的人）
+function avatarBatchStudents(scope){
+  const only=scope==='import'&&lastAvatarImport&&lastAvatarImport.ids.length?new Set(lastAvatarImport.ids):null;
+  return state.students.filter(s=>{
+    if(!s||!photoRecord(s.id))return false;
+    if(only)return only.has(s.id);
+    return !state.currentClass||s.className===state.currentClass;
+  });
+}
+// 记住上次用的参数（同类照片第二次不用再手调）
+async function avatarBatchPrefs(){
+  try{
+    const rows=await DB.all('meta');
+    const hit=(rows||[]).find(x=>x&&x.id==='avatarBatchParams');
+    const v=hit&&hit.value;
+    if(v&&Number.isFinite(Number(v.zoom)))return {zoom:Number(v.zoom),dx:Number(v.dx)||0,dy:Number(v.dy)||0};
+  }catch(err){}
+  return {zoom:AVATAR_BATCH_PRESETS[0].zoom,dx:AVATAR_BATCH_PRESETS[0].dx,dy:AVATAR_BATCH_PRESETS[0].dy};
+}
+function avatarBatchSavePrefs(params){
+  DB.put('meta',{id:'avatarBatchParams',value:{zoom:params.zoom,dx:params.dx,dy:params.dy}}).catch(()=>{});
+}
+async function openAvatarBatchCrop(options){
+  const opts=options||{};
+  const hasImport=avatarBatchStudents('import').length>0;
+  let scope=(opts.scope==='import'&&hasImport)||(!hasImport&&opts.scope!=='class')?'import':'class';
+  if(!hasImport)scope='class';
+  const params=await avatarBatchPrefs();
+  document.getElementById('avatarBatchCrop')?.remove();
+  const modal=document.createElement('div');
+  modal.id='avatarBatchCrop';modal.className='modal-backdrop';
+  modal.innerHTML=`<div class="modal-card seat-import-card batch-crop-card" role="dialog" aria-modal="true">\
+<div class="modal-header"><h2>批量调整裁剪</h2><button type="button" class="icon-button modal-close" aria-label="关闭">×</button></div>\
+<div class="batch-scope" id="batchScope"></div>\
+<p class="hint" id="batchCountHint"></p>\
+<div class="batch-crop-grid" id="batchGrid"></div>\
+<div class="batch-crop-presets" id="batchPresets"></div>\
+<div class="batch-crop-controls">\
+<label class="batch-slider"><span>缩放</span><input type="range" id="batchZoom" min="100" max="300" step="5"><b id="batchZoomText"></b></label>\
+<label class="batch-slider"><span>上下</span><input type="range" id="batchDy" min="-35" max="35" step="1"><b id="batchDyText"></b></label>\
+<label class="batch-slider"><span>左右</span><input type="range" id="batchDx" min="-35" max="35" step="1"><b id="batchDxText"></b></label>\
+</div>\
+<p class="hint">“上下”调大＝取景框往上（看到更靠上的部分，单寸照常用）；点缩略图可以单独调这一张（会先关掉这个窗口），调完再回来批量应用。</p>\
+<div class="actions">\
+<button type="button" class="secondary" id="batchCancel">取消</button>\
+<button type="button" class="primary" id="batchApply">应用</button>\
+</div>\
+</div>`;
+  document.body.appendChild(modal);
+  const grid=$('#batchGrid'),scopeBox=$('#batchScope'),hint=$('#batchCountHint'),applyBtn=$('#batchApply');
+  const tiles=[];          // {el,img,w,h,studentId}
+  const urls=[];
+  const zoomInput=$('#batchZoom'),dyInput=$('#batchDy'),dxInput=$('#batchDx');
+  const close=()=>{
+    urls.forEach(u=>{try{URL.revokeObjectURL(u);}catch(err){}});
+    modal.remove();
+  };
+  const applyTile=tile=>{
+    const {img,w,h}=tile;
+    if(!w||!h)return;
+    const T=Math.max(40,tile.el.clientWidth||120);
+    const base=Math.max(T/w,T/h)*params.zoom;
+    const dispW=w*base,dispH=h*base;
+    const limX=Math.max(0,(dispW-T)/2),limY=Math.max(0,(dispH-T)/2);
+    const x=Math.max(-limX,Math.min(limX,params.dx*T));
+    const y=Math.max(-limY,Math.min(limY,params.dy*T));
+    img.style.width=dispW+'px';
+    img.style.height=dispH+'px';
+    img.style.transform=`translate(-50%,-50%) translate(${x}px,${y}px)`;
+  };
+  const syncLabels=()=>{
+    zoomInput.value=String(Math.round(params.zoom*100));
+    dyInput.value=String(Math.round(params.dy*100));
+    dxInput.value=String(Math.round(params.dx*100));
+    $('#batchZoomText').textContent=params.zoom.toFixed(2)+'×';
+    $('#batchDyText').textContent=(params.dy>=0?'+':'')+Math.round(params.dy*100)+'%';
+    $('#batchDxText').textContent=(params.dx>=0?'+':'')+Math.round(params.dx*100)+'%';
+  };
+  const applyAll=()=>{tiles.forEach(applyTile);syncLabels();};
+  const renderScopeButtons=()=>{
+    const imported=avatarBatchStudents('import').length,whole=avatarBatchStudents('class').length;
+    scopeBox.innerHTML=`<button type="button" class="batch-scope-btn${scope==='import'?' is-on':''}" data-batch-scope="import"${imported?'':' disabled'}>本次导入 ${imported} 人</button>\
+<button type="button" class="batch-scope-btn${scope==='class'?' is-on':''}" data-batch-scope="class"${whole?'':' disabled'}>整个班 ${whole} 人</button>`;
+    scopeBox.querySelectorAll('[data-batch-scope]').forEach(b=>{
+      b.onclick=()=>{if(scope===b.dataset.batchScope)return;scope=b.dataset.batchScope;buildTiles();};
+    });
+  };
+  const buildTiles=async()=>{
+    renderScopeButtons();
+    const list=avatarBatchStudents(scope);
+    grid.innerHTML='';
+    tiles.length=0;
+    while(urls.length){try{URL.revokeObjectURL(urls.pop());}catch(err){}}
+    hint.textContent=list.length?`下面 ${list.length} 张会一起按上面的参数裁剪；点任意一张可以单独调。`:'这个范围里还没有头像。';
+    applyBtn.disabled=!list.length;
+    applyBtn.textContent=`应用到 ${list.length} 人`;
+    list.forEach(s=>{
+      const rec=photoRecord(s.id);
+      const blob=rec&&(rec.srcBlob||rec.blob);
+      const el=document.createElement('button');
+      el.type='button';el.className='batch-tile';el.dataset.batchId=s.id;
+      el.title=(s.displayName||s.name)+'（点击单独调整）';
+      const img=document.createElement('img');
+      img.alt='';
+      el.appendChild(img);
+      grid.appendChild(el);
+      const tile={el,img,w:0,h:0,studentId:s.id};
+      tiles.push(tile);
+      el.onclick=()=>{close();openStudentAvatar(state.students.find(x=>x.id===s.id)||s);};
+      if(blob){
+        const url=URL.createObjectURL(blob);
+        urls.push(url);
+        img.onload=()=>{tile.w=img.naturalWidth;tile.h=img.naturalHeight;applyTile(tile);};
+        img.src=url;
+      }
+    });
+    applyAll();
+  };
+  $('#batchPresets').innerHTML=AVATAR_BATCH_PRESETS.map(p=>`<button type="button" class="batch-preset${Math.abs(p.zoom-params.zoom)<0.001&&Math.abs(p.dy-params.dy)<0.001&&Math.abs(p.dx-params.dx)<0.001?' is-on':''}" data-preset="${p.key}">${p.label}</button>`).join('');
+  $('#batchPresets').querySelectorAll('[data-preset]').forEach(b=>{
+    b.onclick=()=>{
+      const p=AVATAR_BATCH_PRESETS.find(x=>x.key===b.dataset.preset);
+      if(!p)return;
+      params.zoom=p.zoom;params.dx=p.dx;params.dy=p.dy;
+      applyAll();
+      $('#batchPresets').querySelectorAll('[data-preset]').forEach(x=>x.classList.toggle('is-on',x===b));
+    };
+  });
+  zoomInput.oninput=()=>{params.zoom=Math.max(1,Math.min(3,Number(zoomInput.value)/100||1));applyAll();};
+  dyInput.oninput=()=>{params.dy=Math.max(-0.35,Math.min(0.35,Number(dyInput.value)/100||0));applyAll();};
+  dxInput.oninput=()=>{params.dx=Math.max(-0.35,Math.min(0.35,Number(dxInput.value)/100||0));applyAll();};
+  modal.querySelector('.modal-close').onclick=close;
+  $('#batchCancel').onclick=close;
+  modal.onclick=e=>{if(e.target===modal)close();};
+  applyBtn.onclick=async()=>{
+    const list=avatarBatchStudents(scope);
+    if(!list.length){toast('这个范围里还没有头像');return;}
+    if(avatarBatchRunning)return;
+    avatarBatchRunning=true;
+    applyBtn.disabled=true;
+    applyBtn.textContent='正在裁剪…';
+    const snapshot=await avatarBatchApply(list,params);
+    avatarBatchRunning=false;
+    avatarBatchSavePrefs(params);
+    close();
+    showAvatarBatchResult(list.length,snapshot);
+  };
+  await buildTiles();
+  window.addEventListener('resize',()=>{tiles.forEach(applyTile);},{once:true});
+}
+// 逐张重算并保存；返回 {done, failed, undoItems}
+async function avatarBatchApply(students,params){
+  const crop={rot:0,zoom:params.zoom,dx:params.dx,dy:params.dy};
+  const ui=avatarProgressUi(students.length,'正在重新裁剪头像');
+  const failed=[],undoItems=[];
+  let done=0;
+  for(const s of students){
+    ui.update(done,students.length,s.displayName||s.name);
+    const rec=photoRecord(s.id);
+    const src=rec&&(rec.srcBlob||rec.blob);
+    if(!src){failed.push((s.displayName||s.name)+'：没有可重算的原图');continue;}
+    try{
+      const dec=await decodeImage(src);
+      try{
+        const blob=await avatarCropBlob(dec.src,dec.w,dec.h,crop);
+        await saveAvatar(s.id,blob,rec.srcBlob||rec.blob,crop);
+        // 记下“改之前”的取景参数，方便一键撤回（只存参数，不存图片）
+        undoItems.push({id:s.id,crop:rec.crop||null});
+        done++;
+      }finally{dec.release();}
+    }catch(err){failed.push((s.displayName||s.name)+'：'+(err.message||'读取失败'));}
+  }
+  ui.update(students.length,students.length);
+  ui.close();
+  try{await DB.put('meta',{id:'avatarCropUndo',at:Date.now(),items:undoItems});}catch(err){}
+  render();
+  return {done,failed,undoItems};
+}
+function showAvatarBatchResult(total,result){
+  document.getElementById('avatarBatchResult')?.remove();
+  const failed=(result&&result.failed)||[];
+  const modal=document.createElement('div');
+  modal.id='avatarBatchResult';modal.className='modal-backdrop';
+  modal.innerHTML=`<div class="modal-card seat-import-card" role="dialog" aria-modal="true">\
+<div class="modal-header"><h2>批量取景完成</h2><button type="button" class="icon-button modal-close" aria-label="关闭">×</button></div>\
+<p class="seat-import-stats">已按新的取景重新裁剪 ${result.done} / ${total} 人</p>\
+${failed.length?`<ul class="seat-import-notes"><li class="seat-import-note warn">${esc('这些没处理：'+failed.slice(0,8).join('；')+(failed.length>8?' 等':''))}</li></ul>`:''}\
+<p class="hint">不满意可以点“撤回”，用改之前的取景重算一遍；也可以点开某个学生的头像单独微调。</p>\
+<div class="actions">\
+<button type="button" class="secondary" id="avatarBatchUndo">撤回这次批量取景</button>\
+<button type="button" class="primary" id="avatarBatchOk">知道了</button>\
+</div>\
+</div>`;
+  document.body.appendChild(modal);
+  const close=()=>modal.remove();
+  modal.querySelector('.modal-close').onclick=close;
+  $('#avatarBatchOk').onclick=close;
+  modal.onclick=e=>{if(e.target===modal)close();};
+  $('#avatarBatchUndo').onclick=async()=>{close();await avatarBatchUndo();};
+}
+// 撤回上一次批量取景：按存下来的旧参数重算（学生档案与照片本身不删）
+async function avatarBatchUndo(){
+  let snap=null;
+  try{
+    const rows=await DB.all('meta');
+    snap=(rows||[]).find(x=>x&&x.id==='avatarCropUndo')||null;
+  }catch(err){}
+  if(!snap||!Array.isArray(snap.items)||!snap.items.length){toast('没有可撤回的批量取景');return;}
+  if(avatarBatchRunning){toast('正在处理，请稍候');return;}
+  avatarBatchRunning=true;
+  const students=snap.items.map(it=>({student:state.students.find(s=>s.id===it.id),crop:it.crop})).filter(x=>x.student);
+  const ui=avatarProgressUi(students.length,'正在撤回批量取景');
+  const failed=[];
+  let done=0;
+  for(const item of students){
+    const s=item.student;
+    ui.update(done,students.length,s.displayName||s.name);
+    const rec=photoRecord(s.id);
+    const src=rec&&(rec.srcBlob||rec.blob);
+    if(!src){failed.push((s.displayName||s.name)+'：没有可重算的原图');continue;}
+    const crop=item.crop||{rot:0,zoom:1,dx:0,dy:0};
+    try{
+      const dec=await decodeImage(src);
+      try{
+        const blob=await avatarCropBlob(dec.src,dec.w,dec.h,crop);
+        await saveAvatar(s.id,blob,rec.srcBlob||rec.blob,item.crop||undefined);
+        done++;
+      }finally{dec.release();}
+    }catch(err){failed.push((s.displayName||s.name)+'：'+(err.message||'读取失败'));}
+  }
+  ui.update(students.length,students.length);
+  ui.close();
+  avatarBatchRunning=false;
+  try{await DB.remove('meta','avatarCropUndo');}catch(err){}
+  render();
+  toast(`已撤回批量取景：还原 ${done} 人${failed.length?`，${failed.length} 人失败`:''}`);
+}
+
 // 下载本班头像清单模板：老师只需把照片放进 photos/、改成清单里的文件名，再连清单一起压缩
 function downloadAvatarManifest(){
   const list=state.students.filter(s=>!state.currentClass||s.className===state.currentClass).slice().sort((a,b)=>String(a.id).localeCompare(String(b.id),'zh-CN'));
@@ -544,12 +857,44 @@ function avatarExportBaseName(student){
   // 文件名里不能出现的字符换成“_”，其余原样（中文姓名当然保留）
   return raw.replace(/[\\/:*?"<>|\r\n]+/g,'_').trim()||'学生';
 }
+// 导出范围：只有本班 / 全部班级（多个班有头像时才问一句）
+function avatarExportScopeChoice(){
+  const withPhoto=(state.students||[]).filter(s=>s&&photoRecord(s.id));
+  const classesWithPhoto=[...new Set(withPhoto.map(s=>normalizeClassName(s.className)))];
+  const cls=normalizeClassName(state.currentClass||'');
+  if(classesWithPhoto.length<=1)return Promise.resolve(cls&&classesWithPhoto.includes(cls)?'class':'all');
+  const clsCount=withPhoto.filter(s=>normalizeClassName(s.className)===cls).length;
+  return new Promise(resolve=>{
+    document.getElementById('avatarExportScope')?.remove();
+    const modal=document.createElement('div');
+    modal.id='avatarExportScope';modal.className='modal-backdrop';
+    modal.innerHTML=`<div class="modal-card avatar-menu-card" role="dialog" aria-modal="true">\
+<div class="modal-header"><h2>导出哪些头像？</h2><button type="button" class="icon-button modal-close" aria-label="关闭">×</button></div>\
+<p class="hint">本机有 ${classesWithPhoto.length} 个班共 ${withPhoto.length} 人设置了头像。换设备时如果不想一个班导一次，选“全部班级”。</p>\
+<div class="actions avatar-menu-actions">\
+<button type="button" class="secondary" id="avatarScopeClass"${clsCount?'':' disabled'}>本班 ${esc(cls||'—')}（${clsCount} 张）</button>\
+<button type="button" class="primary" id="avatarScopeAll">全部班级（${withPhoto.length} 张）</button>\
+</div>\
+<div class="actions"><button type="button" class="secondary" id="avatarScopeCancel">取消</button></div>\
+</div>`;
+    document.body.appendChild(modal);
+    const close=value=>{modal.remove();resolve(value);};
+    modal.querySelector('.modal-close').onclick=()=>close(null);
+    modal.onclick=e=>{if(e.target===modal)close(null);};
+    $('#avatarScopeCancel').onclick=()=>close(null);
+    $('#avatarScopeAll').onclick=()=>close('all');
+    const clsBtn=$('#avatarScopeClass');
+    if(clsBtn)clsBtn.onclick=()=>close('class');
+  });
+}
 async function exportAvatarPackage(){
   if(typeof JSZip==='undefined'){toast('压缩包组件还没加载好，请刷新页面重试');return;}
   const btn=$('#avatarExportBtn');
   if(btn&&btn.disabled)return;
+  const scope=await avatarExportScopeChoice();
+  if(!scope)return;
   const rawCls=String(state.currentClass||'').trim();
-  const cls=rawCls?normalizeClassName(rawCls):'';
+  const cls=scope==='all'?'':(rawCls?normalizeClassName(rawCls):'');
   const pool=(state.students||[]).filter(s=>s&&(!cls||s.className===cls));
   const list=pool.filter(s=>photoRecord(s.id)).sort((a,b)=>
     String(a.className||'').localeCompare(String(b.className||''),'zh-CN')||

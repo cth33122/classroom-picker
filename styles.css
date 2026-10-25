@@ -220,6 +220,24 @@ body.modal-open .view-track { touch-action:none; }
 .seat-import-note.group, .seat-import-note.empty { color:var(--muted); }
 .seat-import-note.info::before { content:'✓'; color:var(--teal); }
 .seat-import-card textarea { width:100%; min-height:130px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; font:inherit; font-size:14px; resize:vertical; }
+/* 批量取景：范围切换 + 缩略图网格 + 三个滑块 */
+.batch-crop-card { width:min(560px,100%); }
+.batch-scope { display:flex; gap:8px; margin:0 0 8px; }
+.batch-scope-btn { flex:1 1 0; min-height:36px; border:1px solid var(--line); border-radius:7px; background:#fff; color:var(--ink); font:inherit; font-size:13px; font-weight:700; }
+.batch-scope-btn.is-on { border-color:var(--teal); background:var(--mint); color:var(--teal-dark); }
+.batch-scope-btn:disabled { opacity:.45; }
+.batch-crop-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(84px,1fr)); gap:8px; max-height:38vh; overflow:auto; padding:2px; }
+.batch-tile { position:relative; width:100%; aspect-ratio:1/1; padding:0; overflow:hidden; border:1px solid var(--line); border-radius:8px; background:var(--bg); }
+.batch-tile img { position:absolute; left:50%; top:50%; max-width:none; transform:translate(-50%,-50%); pointer-events:none; }
+.batch-crop-presets { display:flex; flex-wrap:wrap; gap:6px; margin:10px 0 0; }
+.batch-preset { border:1px solid var(--line); border-radius:999px; background:#fff; color:var(--ink); font:inherit; font-size:12px; font-weight:700; padding:5px 12px; }
+.batch-preset.is-on { border-color:var(--teal); background:var(--mint); color:var(--teal-dark); }
+.batch-crop-controls { display:grid; gap:6px; margin-top:10px; }
+.batch-slider { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
+.batch-slider span { flex:0 0 32px; }
+.batch-slider input { flex:1 1 auto; min-width:80px; accent-color:var(--teal); }
+.batch-slider b { flex:0 0 54px; text-align:right; color:var(--ink); font-variant-numeric:tabular-nums; }
+.seat-import-note.warn { border-color:#f3d1cf; color:var(--danger); }
 /* 导入结果：未对上的名字（可展开）+ “是不是 XXX” 确认行 */
 .seat-unmatched { margin:0 0 10px; border:1px solid var(--line); border-radius:7px; padding:8px 10px; background:#fff; }
 .seat-unmatched summary { cursor:pointer; font-size:14px; }
