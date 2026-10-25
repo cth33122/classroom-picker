@@ -236,6 +236,36 @@ body.modal-open .view-track { touch-action:none; }
 .batch-slider { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); }
 .batch-slider span { flex:0 0 32px; }
 .batch-slider input { flex:1 1 auto; min-width:80px; accent-color:var(--teal); }
+/* 成绩分析页：学生页里的二级页面 */
+.student-exam-line { margin:0 0 8px; }
+.student-section-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.student-section-head .student-section-title { margin:0; }
+.student-section-head .secondary { min-height:32px; padding:4px 12px; font-size:13px; flex:0 0 auto; }
+.grade-analysis-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:8px; }
+.grade-analysis-head .secondary { min-height:32px; padding:4px 12px; font-size:13px; flex:0 0 auto; }
+.grade-analysis-head h2 { margin:0; }
+.grade-total { margin-left:6px; font-weight:400; }
+/* 顶部标签条：滚动时一直贴在页首，点标签跳到对应分组 */
+.grade-analysis-sticky { position:sticky; top:0; z-index:6; background:var(--paper); }
+.grade-summary { display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 0; }
+.grade-jump { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; background:#fff; padding:3px 10px 3px 4px; font:inherit; font-size:12px; }
+.grade-jump b { font-variant-numeric:tabular-nums; }
+.grade-chip { display:inline-block; border-radius:999px; padding:2px 8px; font-size:12px; font-weight:700; line-height:1.5; }
+.grade-chip-danger { color:var(--danger); background:#fde8e7; }
+.grade-chip-warn { color:var(--warn); background:#fdf1e3; }
+.grade-chip-good { color:var(--teal-dark); background:var(--mint); }
+.grade-chip-muted { color:var(--muted); background:#eef2f1; }
+.grade-group { margin:0 0 14px; }
+.grade-group:last-child { margin-bottom:0; }
+/* 分组标题也贴在标签条下面，翻看长名单时始终知道自己在哪一段 */
+.grade-group-head { position:sticky; top:var(--grade-group-top,0px); z-index:5; display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:6px 0 4px; border-bottom:1px solid var(--line); background:var(--paper); }
+.grade-group-head strong { font-size:14px; }
+.grade-row { display:flex; flex-direction:column; gap:4px; width:100%; padding:9px 0; border:0; border-bottom:1px solid var(--line); background:transparent; text-align:left; }
+.grade-row:last-child { border-bottom:0; }
+.grade-row-main { display:flex; align-items:center; gap:8px; min-width:0; }
+.grade-row-who { display:flex; align-items:center; gap:6px; flex-wrap:wrap; min-width:0; }
+.grade-row-who strong { font-size:15px; }
+.grade-row-evidence { font-size:12px; line-height:1.5; }
 .batch-slider b { flex:0 0 54px; text-align:right; color:var(--ink); font-variant-numeric:tabular-nums; }
 .seat-import-note.warn { border-color:#f3d1cf; color:var(--danger); }
 /* 导入结果：未对上的名字（可展开）+ “是不是 XXX” 确认行 */

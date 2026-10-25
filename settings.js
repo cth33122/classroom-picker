@@ -206,6 +206,32 @@ function renderSettings(){  const s=state.settings,historyOptions=HISTORY_RULE_O
 </div>\
 </div>\
 <div class="panel">\
+<h2 class="with-help">成绩分析 ${panelHelpBtn('grade.analysis','成绩分析判定规则的说明')}</h2>\
+<div class="grid three">\
+<div class="field">\
+<label>持续偏低：后百分之…</label>\
+<input data-setting="gradeLowPct" type="number" min="0.5" max="0.95" step="0.05" value="${s.gradeLowPct||GRADE_STATUS_DEFAULTS.lowPct}">\
+</div>\
+<div class="field">\
+<label>单次异常：比常态差多少</label>\
+<input data-setting="gradeAnomaly" type="number" min="0.05" max="0.6" step="0.05" value="${s.gradeAnomaly||GRADE_STATUS_DEFAULTS.anomaly}">\
+</div>\
+<div class="field">\
+<label>持续下降：两个窗口差多少</label>\
+<input data-setting="gradeDropWindow" type="number" min="0.02" max="0.6" step="0.05" value="${s.gradeDropWindow||GRADE_STATUS_DEFAULTS.dropWindow}">\
+</div>\
+<div class="field">\
+<label>正在改善：回升多少</label>\
+<input data-setting="gradeImproveWindow" type="number" min="0.02" max="0.6" step="0.05" value="${s.gradeImproveWindow||GRADE_STATUS_DEFAULTS.improveWindow}">\
+</div>\
+<div class="field">\
+<label>至少几次有效成绩才判定</label>\
+<input data-setting="gradeMinExams" type="number" min="2" max="10" step="1" value="${s.gradeMinExams||GRADE_STATUS_DEFAULTS.minExams}">\
+</div>\
+</div>\
+<p class="hint">以上都用“段排位百分位”（段排名÷当场段人数，0 最好、1 最差）。改完到“学生”页点“成绩分析”即可看到结果。</p>\
+</div>\
+<div class="panel">\
 <h2>快捷班级</h2>\
 <div class="shortcut-editor">\
 <input id="shortcutClasses" value="${esc((s.shortcutClasses||[]).join(','))}" placeholder="01,02,10">\

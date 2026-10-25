@@ -329,25 +329,25 @@ function toggleStudentHeader(key){const prefix=key;state.studentSort=state.stude
 
 function renderStudents(){
   if(state.studentDetail){renderStudentDetail(state.studentDetail);return;}
+  if(state.gradeAnalysisOpen){renderGradeAnalysis();return;}
   const filtered=state.students.filter(s=>!state.currentClass||s.className===state.currentClass),exams=orderedExams();
-  if(!state.studentSelectionInitialized){state.studentCurrentExamId=exams.find(e=>e.id===state.studentCurrentExamId)?.id||exams[0]?.id||'';state.studentPreviousExamId=previousExamIdFor(state.studentCurrentExamId);state.studentSelectionInitialized=true;}
-  const currentExam=exams.find(e=>e.id===state.studentCurrentExamId)||exams[0],previousExam=state.studentPreviousExamId?exams.find(e=>e.id===state.studentPreviousExamId):null,examDate=e=>e?.date?`<small class="hint exam-date">考试日期：${esc(e.date)}</small>`:'';
+  // 不再提供“选哪场考试”：一律看最近一场；上一场只用来算“位次变化”列和排序
+  const latestExam=exams[0]||null;
+  state.studentCurrentExamId=latestExam?latestExam.id:'';
+  state.studentPreviousExamId=previousExamIdFor(state.studentCurrentExamId);
+  const examLine=latestExam
+    ?`当前考试：${esc(latestExam.name||latestExam.date||'未命名考试')}${latestExam.date?`（${esc(latestExam.date)}）`:''}`
+    :'当前考试：暂无考试';
   $('#view-students').innerHTML=`${classChangeBannerHtml(state.currentClass)}<div class="panel">\
-<div class="grid">\
+<p class="hint student-exam-line">${examLine}</p>\
 <div class="field">\
-<label>当前考试</label>\
-<select id="studentCurrentExam">${examOptions(state.studentCurrentExamId)}</select>${examDate(currentExam)}</div>\
-<div class="field">\
-<label>上一次考试</label>\
-<select id="studentPreviousExam">${examOptions(state.studentPreviousExamId,true)}</select>${examDate(previousExam)}</div>\
-</div>\
-<div class="field">\
-<label>搜索姓名</label>\
-<input id="studentSearch" placeholder="输入姓名">\
+<input id="studentSearch" placeholder="输入姓名搜索学生">\
 </div>\
 </div>\
 <div class="panel">\
-<div class="student-section-title">学生资料 <span class="badge">${filtered.length}人</span>\
+<div class="student-section-head">\
+<div class="student-section-title">学生资料 <span class="badge">${filtered.length}人</span></div>\
+<button type="button" class="secondary" id="gradeAnalysisBtn" title="按最近几次成绩看谁持续下降、持续偏低、正在改善">成绩分析</button>\
 </div>\
 <div class="table-header student-table-header">\
 <button data-student-sort="score">当前成绩${sortArrow(state.studentSort.startsWith('score'),state.studentSort.endsWith('asc'))}</button>\
@@ -357,10 +357,9 @@ function renderStudents(){
 <div id="studentList">${studentRows(filtered)}</div>\
 </div>`;
     
-  $('#studentCurrentExam').onchange=e=>{state.studentCurrentExamId=e.target.value;state.studentPreviousExamId=previousExamIdFor(e.target.value);renderStudents();};
-    $('#studentPreviousExam').onchange=e=>{state.studentPreviousExamId=e.target.value;renderStudents();};
-    $('#studentSearch').oninput=e=>{$('#studentList').innerHTML=studentRows(filtered.filter(s=>String(s.name||'').includes(e.target.value.trim())));bindStudentActions();};
+  $('#studentSearch').oninput=e=>{$('#studentList').innerHTML=studentRows(filtered.filter(s=>String(s.name||'').includes(e.target.value.trim())));bindStudentActions();};
     $$('[data-student-sort]').forEach(b=>b.onclick=()=>toggleStudentHeader(b.dataset.studentSort));
+    $('#gradeAnalysisBtn').onclick=()=>openGradeAnalysis();
     bindStudentActions();
     bindClassChangeBanner();      // 本班班级变动提示条：核对无误 / 撤销这批变动
     

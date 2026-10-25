@@ -1,7 +1,7 @@
 // 入口：视图分发、数据加载、service worker 注册
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v217';
+const APP_VERSION = 'v220';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -34,7 +34,7 @@ function highlightView(name){
 function setActiveView(name,options){
   const index=VIEW_NAMES.indexOf(name);if(index<0)return;
   const opts=options||{};
-  if(opts.reset&&name==='students'){state.studentDetail=null;state.studentExamExpand=false;viewRenderer('students')();}
+  if(opts.reset&&name==='students'){state.studentDetail=null;state.studentExamExpand=false;state.gradeAnalysisOpen=false;viewRenderer('students')();}
   goToView(name);
   if(opts.reset)scrollViewTop(name);
 }
@@ -138,6 +138,13 @@ function backCloseDetail(){
 function backHandleLayer(){
   if(backCloseTopModal()){backLog('关闭弹窗');return true;}
   if(backCloseDetail())return true;
+  if(state.gradeAnalysisOpen){          // 成绩分析页：返回学生列表
+    state.gradeAnalysisOpen=false;
+    renderStudents();
+    scrollViewTop('students');
+    backLog('退出成绩分析 → 学生列表');
+    return true;
+  }
   if(backViewStack.length>1){
     backViewStack.pop();
     const target=backCurrentView();
@@ -227,7 +234,7 @@ async function reload(){
 }
 
 // 丢弃与旧数据绑定的临时选择（候选、学生详情、考试选择、待确认导入）
-function resetViewState(){state.candidates=[];state.selectedCandidate=null;state.studentDetail=null;state.studentDetailFrom='';state.historyStudentId='';state.studentSelectionInitialized=false;state.studentCurrentExamId='';state.studentPreviousExamId='';state.pendingImport=null;state.seatClass='';state.seatLayout=null;}
+function resetViewState(){state.candidates=[];state.selectedCandidate=null;state.studentDetail=null;state.studentDetailFrom='';state.gradeAnalysisOpen=false;state.historyStudentId='';state.studentSelectionInitialized=false;state.studentCurrentExamId='';state.studentPreviousExamId='';state.pendingImport=null;state.seatClass='';state.seatLayout=null;}
 
 // render() 现在会重绘全部页面，这里保留旧名字以兼容既有调用
 function renderAllViews(){render();}
