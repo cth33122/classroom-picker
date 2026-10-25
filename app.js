@@ -1,7 +1,7 @@
 // 入口：视图分发、数据加载、service worker 注册
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v222';
+const APP_VERSION = 'v223';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -41,12 +41,31 @@ function setActiveView(name,options){
 $$('.tab').forEach(tab=>tab.addEventListener('click',()=>setActiveView(tab.dataset.view,{reset:true})));
 // 旋转屏幕/改变窗口宽度后，重新对齐到当前页
 window.addEventListener('resize',()=>{viewIndex=Math.max(0,VIEW_NAMES.indexOf(state.view));scrollTrackToPage(viewIndex);});
+// 页面高度：安卓 Chrome 刚刷新时 100dvh 可能还没算上工具栏，会把底部导航挤出屏幕。
+// 用 visualViewport 的可见高度兜底，转屏/工具栏伸缩时实时校正。
+function syncAppHeight(){
+  try{
+    const vv=window.visualViewport;
+    const visible=Math.round((vv&&vv.height)||window.innerHeight||0);
+    if(!visible)return;
+    const cssH=Math.round(document.documentElement.clientHeight||0);
+    if(cssH&&Math.abs(cssH-visible)>4)console.log('[高度] 可见区域 '+visible+'，CSS 布局高度 '+cssH+' → 已按可见区域校正');
+    document.documentElement.style.setProperty('--app-h',visible+'px');
+  }catch(err){}
+}
+syncAppHeight();
+window.addEventListener('resize',syncAppHeight);
+window.addEventListener('orientationchange',()=>{syncAppHeight();setTimeout(syncAppHeight,120);});
+if(window.visualViewport){
+  window.visualViewport.addEventListener('resize',syncAppHeight);
+  window.visualViewport.addEventListener('scroll',syncAppHeight,{passive:true});
+}
 // 滑动/滚动后同步当前页与标签高亮（页面不重绘，状态与滚动位置都保留）
 trackEl?.addEventListener('scroll',()=>{
   const index=Math.max(0,Math.min(VIEW_NAMES.length-1,Math.round(trackEl.scrollLeft/trackWidth())));
   if(index!==viewIndex){viewIndex=index;highlightView(VIEW_NAMES[index]);}
 },{passive:true});
-window.addEventListener('load',async()=>{if('serviceWorker'in navigator){const hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!window.__swReloaded){window.__swReloaded=true;location.reload();}});navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(()=>{});}try{await reload();}catch(err){toast(`本地数据初始化失败：${err.message}`);}initBackGuard();let deferred;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;$('#installBtn').hidden=false;});$('#installBtn').addEventListener('click',async()=>{if(deferred){deferred.prompt();deferred=null;}});});
+window.addEventListener('load',async()=>{if('serviceWorker'in navigator){const hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!window.__swReloaded&&!window.__forceReloading){window.__swReloaded=true;location.reload();}});navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(()=>{});}try{await reload();}catch(err){toast(`本地数据初始化失败：${err.message}`);}initBackGuard();syncAppHeight();setTimeout(syncAppHeight,0);setTimeout(syncAppHeight,300);let deferred;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;$('#installBtn').hidden=false;});$('#installBtn').addEventListener('click',async()=>{if(deferred){deferred.prompt();deferred=null;}});});
 // Keep exam stores in the reload transaction and preserve an empty previous exam for the oldest exam.
 
 function render(){
@@ -259,26 +278,31 @@ async function refreshAfterDataImport(){
   if(hadCandidates&&state.currentClass&&state.students.some(s=>s.className===state.currentClass))recommend();
 }
 
-// 强制更新：把页面用到的所有资源绕过浏览器缓存重新下载一遍，再刷新页面。
+// 强制更新：重新下载最新程序文件，然后刷新一次页面。
 // 只覆盖缓存条目，不会删除本机数据（IndexedDB 里的学生、考试、点名记录等都不受影响）。
+// 注意：只刷一次——service worker 接管（controllerchange）触发的刷新会让这里跳过，
+// 免得刚刷新完又被刷一次，安卓上连刷两次容易把底部导航栏的位置算错。
 async function forceAppUpdate(){
   if(!confirm('将重新下载最新程序文件，然后刷新页面。\n不会清除学生、考试、点名记录等本机数据。\n\n继续吗？'))return;
   const btn=$('#forceUpdateBtn');
   const label=btn?btn.textContent:'';
   if(btn){btn.disabled=true;btn.textContent='正在更新…';}
+  window.__forceReloading=true;
   try{
-    const urls=[location.pathname+location.search];
+    // 只把脚本/样式绕过缓存重新拉一遍（页面本身交给下面的 reload）
+    const urls=[];
     $$('script[src]').forEach(el=>urls.push(el.getAttribute('src')));
     $$('link[href]').forEach(el=>urls.push(el.getAttribute('href')));
     const list=[...new Set(urls.filter(Boolean))];
     await Promise.all(list.map(u=>fetch(u,{cache:'reload'}).catch(()=>null)));
     if('serviceWorker' in navigator){
       const regs=await navigator.serviceWorker.getRegistrations().catch(()=>[]);
-      await Promise.all(regs.map(r=>r.update().catch(()=>null)));
+      await Promise.all(regs.map(reg=>reg.update().catch(()=>null)));
     }
     toast('已重新下载最新文件，正在刷新…');
-    setTimeout(()=>location.reload(),700);
+    setTimeout(()=>location.reload(),300);
   }catch(err){
+    window.__forceReloading=false;
     if(btn){btn.disabled=false;btn.textContent=label;}
     toast(`更新失败：${err.message}`);
   }

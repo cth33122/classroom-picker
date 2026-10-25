@@ -1,7 +1,10 @@
-:root { --ink:#16302b; --name-ink:#111111; --muted:#6b7c78; --teal:#0f766e; --teal-dark:#095e58; --mint:#dff4ef; --line:#dfe9e6; --paper:#fff; --bg:#f5f7f6; --warn:#b45309; --danger:#b42318; --focus:#9b1c1c; --purple:#7c3aed; }
+:root { --ink:#16302b; --name-ink:#111111; --muted:#6b7c78; --teal:#0f766e; --teal-dark:#095e58; --mint:#dff4ef; --line:#dfe9e6; --paper:#fff; --bg:#f5f7f6; --warn:#b45309; --danger:#b42318; --focus:#9b1c1c; --purple:#7c3aed; --app-h:100vh; }
+@supports (height:100dvh) { :root { --app-h:100dvh; } }
 * { box-sizing:border-box; }
 html, body { height:100%; }
-body { margin:0; background:var(--bg); color:var(--ink); font-family: system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; display:flex; flex-direction:column; height:100vh; height:100dvh; overflow:hidden; }
+/* 高度用 --app-h：CSS 默认 100vh/100dvh，app.js 会按可视区域（visualViewport）实时校正，
+   避免安卓刷新后工具栏没算进去、把底部导航栏挤出屏幕 */
+body { margin:0; background:var(--bg); color:var(--ink); font-family: system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; display:flex; flex-direction:column; height:var(--app-h,100dvh); overflow:hidden; }
 .topbar { display:flex; justify-content:space-between; align-items:center; padding:18px max(18px,calc((100vw - 980px)/2)); background:var(--teal); color:white; }
 .topbar h1 { margin:2px 0 0; font-size:24px; letter-spacing:0; }.eyebrow { margin:0; font-size:10px; opacity:.72; letter-spacing:1px; }
   .global-class { width:max-content; max-width:130px; min-width:0; min-height:38px; margin-left:8px; margin-right:0; flex:0 0 auto; border:1px solid rgba(255,255,255,.45); border-radius:7px; padding:6px 8px; color:#16302b; background:#fff; }
