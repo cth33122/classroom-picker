@@ -831,7 +831,7 @@ async function avatarBatchUndo(){
   toast(`已撤回批量取景：还原 ${done} 人${failed.length?`，${failed.length} 人失败`:''}`);
 }
 
-// 下载本班头像清单模板：老师只需把照片放进 photos/、改成清单里的文件名，再连清单一起压缩
+// 下载头像名单（原来的“清单模板”）：老师只需把照片放进 photos/、改成名单里的文件名，再连名单一起压缩
 function downloadAvatarManifest(){
   const list=state.students.filter(s=>!state.currentClass||s.className===state.currentClass).slice().sort((a,b)=>String(a.id).localeCompare(String(b.id),'zh-CN'));
   if(!list.length){toast('这个班还没有学生');return;}

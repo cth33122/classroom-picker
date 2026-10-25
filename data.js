@@ -215,7 +215,7 @@ async function savePendingExams(){
     if(needDialog){
       const choice=await confirmClassShift(shift,idColumns,bestColumn,groupsNeedingHelp,ambiguous);
       if(!choice){if(btn){btn.disabled=false;btn.textContent=label;}importBusy=false;toast('已取消导入，数据没有变化');return;}
-      if(choice.backup){try{await exportBackup();}catch(err){console.warn('自动备份失败：',err);}}
+      if(choice.backup){try{await exportBackup({silent:true});}catch(err){console.warn('自动备份失败：',err);}}
       if(choice.assign&&Object.keys(choice.assign).length){
         const bound=applyIdentityAssignments(incomingRows,choice.assign,auditIndex,state.students);
         if(bound)toast(`已按你的指认绑定 ${bound} 个人`);
@@ -546,7 +546,7 @@ function renderData(){
 <label class="secondary restore-label">导入头像包（zip）<input id="avatarZipInput" type="file" accept=".zip,application/zip" hidden></label>\
 <button class="secondary" id="avatarBatchCropBtn">批量调整裁剪</button>\
 <button class="secondary" id="avatarExportBtn">导出头像包（zip）</button>\
-<button class="secondary" id="avatarManifestBtn">下载本班头像清单模板</button>\
+<button class="secondary" id="avatarManifestBtn">下载头像名单</button>\
 </div>\
 </div>\
 <div class="panel" id="classPanel">\
@@ -564,7 +564,7 @@ ${classBatchListHtml()}\
 <button class="danger" id="clearBtn">清除全部本地数据</button>\
 </div>`;
     
-  $('#xlsxInput')?.addEventListener('change',handleImport);$('#rosterInput')?.addEventListener('change',handleRosterImport);$('#backupNowBtn')?.addEventListener('click',exportBackup);$('#backupInput')?.addEventListener('change',handleRestore);$('#clearBtn')?.addEventListener('click',clearAll);$$('[data-open-exam]').forEach(b=>b.onclick=()=>openExamEditor(b.dataset.openExam));
+  $('#xlsxInput')?.addEventListener('change',handleImport);$('#rosterInput')?.addEventListener('change',handleRosterImport);$('#backupNowBtn')?.addEventListener('click',()=>exportBackup());$('#backupInput')?.addEventListener('change',handleRestore);$('#clearBtn')?.addEventListener('click',clearAll);$$('[data-open-exam]').forEach(b=>b.onclick=()=>openExamEditor(b.dataset.openExam));
   $('#avatarZipInput')?.addEventListener('change',handleAvatarZipImport);$('#avatarBatchCropBtn')?.addEventListener('click',()=>openAvatarBatchCrop({scope:'class'}));$('#avatarExportBtn')?.addEventListener('click',()=>exportAvatarPackage());$('#avatarManifestBtn')?.addEventListener('click',downloadAvatarManifest);
   $('#classAdjustBtn')?.addEventListener('click',openClassAdjust);
   bindClassBatchList();

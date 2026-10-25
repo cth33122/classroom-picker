@@ -2,7 +2,17 @@ function downloadText(name, text, type='application/json') { const a=document.cr
 // 下载一段二进制（例如 zip 头像包）：和 downloadText 一样，用完再把 objectURL 释放掉
 function downloadBlob(name, blob) { const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),10000); }
 // 备份里 history 行自带 eval/question/questionAt/updatedAt（点名复盘），无需额外表；version 3 起含复盘字段
-async function exportBackup() { const data={version:3,exportedAt:new Date().toISOString(),students:await DB.all('students'),history:await DB.all('history'),settings:await DB.all('settings'),absences:await DB.all('absences'),meta:await DB.all('meta'),exams:await DB.all('exams'),examResults:await DB.all('examResults'),seats:await DB.all('seats')}; downloadText(`课堂点名备份-${localDate()}.json`,JSON.stringify(data,null,2)); }
+// options.silent：导入前的“自动备份”用，不弹提示；手动点“立即备份”时会提示“不含学生头像”
+async function exportBackup(options) {
+  const silent=Boolean(options&&options.silent);
+  const data={version:3,exportedAt:new Date().toISOString(),students:await DB.all('students'),history:await DB.all('history'),settings:await DB.all('settings'),absences:await DB.all('absences'),meta:await DB.all('meta'),exams:await DB.all('exams'),examResults:await DB.all('examResults'),seats:await DB.all('seats')};
+  downloadText(`课堂点名备份-${localDate()}.json`,JSON.stringify(data,null,2));
+  if(silent)return;
+  const photos=typeof photoCount==='function'?photoCount():0;
+  toast(photos
+    ?`备份已导出，但「不含学生头像」（本机 ${photos} 张）：换设备请另外“导出头像包”`
+    :'备份已导出（本机还没有学生头像）');
+}
 async function exportHistory() { const [history,students]=await Promise.all([DB.all('history'),DB.all('students')]); const map=new Map(students.map(s=>[s.id,s])); const rows=[['时间','班级','学号','姓名','难度','评价','问题内容']]; history.forEach(x=>{const s=map.get(x.studentId)||{}; rows.push([new Date(x.at).toLocaleString(),s.className||'',s.id||x.studentId,s.name||'',x.difficulty||'',x.eval==='good'?'😊':x.eval==='bad'?'😢':'',String(x.question||'')]);}); downloadText(`点名历史-${localDate()}.csv`,rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n'),'text/csv;charset=utf-8'); }
 
 // 导出成绩表格：每场考试一个工作表，工作表名沿用“考试名称-日期”，导出后可直接再导入
