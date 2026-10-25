@@ -245,11 +245,14 @@ body.modal-open .view-track { touch-action:none; }
 .grade-analysis-head .secondary { min-height:32px; padding:4px 12px; font-size:13px; flex:0 0 auto; }
 .grade-analysis-head h2 { margin:0; }
 .grade-total { margin-left:6px; font-weight:400; }
-/* 顶部标签条：滚动时一直贴在页首，点标签跳到对应分组 */
-.grade-analysis-sticky { position:sticky; top:0; z-index:6; background:var(--paper); }
-.grade-summary { display:flex; flex-wrap:wrap; gap:6px; margin:2px 0 0; }
-.grade-jump { display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; background:#fff; padding:3px 10px 3px 4px; font:inherit; font-size:12px; }
+/* 标签条吸顶（只有一行，不占地方）；分组标题不再吸顶，靠标签高亮提示当前在哪一段 */
+.grade-analysis-head-panel { position:sticky; top:0; z-index:6; background:var(--paper); }
+/* 状态标签：横排一行，放不下就左右滑 */
+.grade-chips { display:flex; flex-wrap:nowrap; gap:6px; margin:2px 0 0; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; padding:2px 1px; }
+.grade-chips::-webkit-scrollbar { display:none; }
+.grade-jump { flex:0 0 auto; white-space:nowrap; display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; background:#fff; padding:3px 10px 3px 4px; font:inherit; font-size:12px; }
 .grade-jump b { font-variant-numeric:tabular-nums; }
+.grade-jump.is-active { border-color:var(--teal); box-shadow:0 0 0 2px var(--mint); }
 .grade-chip { display:inline-block; border-radius:999px; padding:2px 8px; font-size:12px; font-weight:700; line-height:1.5; }
 .grade-chip-danger { color:var(--danger); background:#fde8e7; }
 .grade-chip-warn { color:var(--warn); background:#fdf1e3; }
@@ -257,8 +260,7 @@ body.modal-open .view-track { touch-action:none; }
 .grade-chip-muted { color:var(--muted); background:#eef2f1; }
 .grade-group { margin:0 0 14px; }
 .grade-group:last-child { margin-bottom:0; }
-/* 分组标题也贴在标签条下面，翻看长名单时始终知道自己在哪一段 */
-.grade-group-head { position:sticky; top:var(--grade-group-top,0px); z-index:5; display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:6px 0 4px; border-bottom:1px solid var(--line); background:var(--paper); }
+.grade-group-head { display:flex; align-items:baseline; justify-content:space-between; gap:8px; padding:6px 0 4px; border-bottom:1px solid var(--line); }
 .grade-group-head strong { font-size:14px; }
 .grade-row { display:flex; flex-direction:column; gap:4px; width:100%; padding:9px 0; border:0; border-bottom:1px solid var(--line); background:transparent; text-align:left; }
 .grade-row:last-child { border-bottom:0; }

@@ -216,34 +216,69 @@ function renderGradeAnalysis(){
 ${list.map(r=>gradeRowHtml(r,config)).join('')}\
 </div>`;
   }).join('');
-  // 上方的彩色标签兼作“跳到对应分组”的按钮（滚动时一直贴在顶部）
+  // 状态标签横排一行（放不下就左右滑），同时也是“跳到对应分组”的按钮
   const jumps=groupKeys.map(key=>`<button type="button" class="grade-jump" data-grade-jump="${key}" title="跳到「${esc(GRADE_STATUS_META[key].label)}」">${gradeChip(key)}<b>${counts[key]}</b></button>`).join('');
   const scope=state.currentClass?` · ${esc(state.currentClass)}`:'';
-  $('#view-students').innerHTML=`<div class="panel grade-analysis-sticky" id="gradeAnalysisSticky">\
+  $('#view-students').innerHTML=`<div class="panel grade-analysis-head-panel" id="gradeAnalysisHead">\
 <div class="grade-analysis-head">\
 <h2 class="with-help">成绩分析 ${panelHelpBtn('grade.analysis','成绩分析的说明')}<span class="hint grade-total">全班 ${total} 人${scope}</span></h2>\
 <button type="button" class="secondary" id="gradeAnalysisBack">返回学生列表</button>\
 </div>\
-<div class="grade-summary">${jumps||'<span class="hint">还没有可分析的成绩</span>'}</div>\
+<div class="grade-chips" id="gradeChips">${jumps||'<span class="hint">还没有可分析的成绩</span>'}</div>\
 </div>\
 <div class="panel" id="gradeAnalysisList">${groups||'<div class="empty">这个范围里还没有可分析的学生</div>'}</div>`;
   $('#gradeAnalysisBack').onclick=()=>closeGradeAnalysis();
   $$('#view-students [data-grade-jump]').forEach(b=>b.onclick=()=>scrollToGradeGroup(b.dataset.gradeJump));
   $$('#view-students [data-grade-student]').forEach(b=>b.onclick=()=>openStudentDetail(b.dataset.gradeStudent));
   bindPanelHelp();
-  // 分组标题要贴在吸顶条下面，所以按吸顶条的实际高度算偏移
-  const bar=$('#gradeAnalysisSticky'),list=$('#gradeAnalysisList');
-  if(bar&&list)list.style.setProperty('--grade-group-top',(bar.offsetHeight+8)+'px');
+  // 跟着滚动高亮当前分组的标签（并把它滑进可视范围）
+  const view=$('#view-students');
+  if(view)view.onscroll=gradeScrollSpy;
+  gradeActiveGroup='';
+  gradeScrollSpy();
 }
-// 点上方标签：滚到对应分组（跳过吸顶条的高度）
+let gradeActiveGroup='';
+// 顶部标签条的实际高度：分组标题不再吸顶，但点击跳转要避开这条
+function gradeHeadOffset(){
+  const bar=$('#gradeAnalysisHead');
+  return bar?Math.max(0,bar.offsetHeight+6):0;
+}
+// 滚动到哪一段，就把对应标签加粗描边；标签在可视区外时自动滑过去
+function gradeScrollSpy(){
+  if(!state.gradeAnalysisOpen||state.studentDetail)return;
+  const view=$('#view-students');
+  if(!view)return;
+  const groups=[...view.querySelectorAll('[data-grade-group]')];
+  if(!groups.length)return;
+  const viewTop=view.getBoundingClientRect().top;
+  const threshold=gradeHeadOffset()+2;
+  let current=groups[0].dataset.gradeGroup;
+  for(const group of groups){
+    if(group.getBoundingClientRect().top-viewTop<=threshold)current=group.dataset.gradeGroup;
+    else break;
+  }
+  // 滚到底时最后一段可能永远到不了顶部，单独兜一下
+  if(view.scrollTop+view.clientHeight>=view.scrollHeight-4)current=groups[groups.length-1].dataset.gradeGroup;
+  if(current===gradeActiveGroup)return;
+  gradeActiveGroup=current;
+  const strip=$('#gradeChips');
+  if(!strip)return;
+  strip.querySelectorAll('[data-grade-jump]').forEach(b=>b.classList.toggle('is-active',b.dataset.gradeJump===current));
+  const active=strip.querySelector(`[data-grade-jump="${current}"]`);
+  if(!active)return;
+  const rect=active.getBoundingClientRect(),stripRect=strip.getBoundingClientRect();
+  if(rect.left<stripRect.left+6)strip.scrollLeft=Math.max(0,strip.scrollLeft-(stripRect.left-rect.left)-10);
+  else if(rect.right>stripRect.right-6)strip.scrollLeft+=rect.right-stripRect.right+10;
+}
+// 点上方标签：滚到对应分组，并立刻高亮它
 function scrollToGradeGroup(key){
   const view=$('#view-students');
   const target=view?view.querySelector(`[data-grade-group="${key}"]`):null;
   if(!view||!target)return;
-  const list=$('#gradeAnalysisList');
-  const offset=list?(parseFloat(getComputedStyle(list).getPropertyValue('--grade-group-top'))||0):0;
-  const delta=target.getBoundingClientRect().top-view.getBoundingClientRect().top-offset-6;
+  const delta=target.getBoundingClientRect().top-view.getBoundingClientRect().top-gradeHeadOffset();
   view.scrollTop=Math.max(0,view.scrollTop+delta);
+  gradeActiveGroup='';
+  gradeScrollSpy();
 }
 function openGradeAnalysis(){
   if(!state.examResults||!state.examResults.length){toast('还没有成绩数据，先导入几场考试成绩');return;}
@@ -254,6 +289,9 @@ function openGradeAnalysis(){
 }
 function closeGradeAnalysis(){
   state.gradeAnalysisOpen=false;
+  gradeActiveGroup='';
+  const view=$('#view-students');
+  if(view)view.onscroll=null;
   renderStudents();
   scrollViewTop('students');
 }
@@ -267,4 +305,4 @@ registerPanelHelp('grade.analysis','成绩分析',
 · <strong>单次异常</strong>：本次比之前历史中位数差 ≥ ${Math.round(c.anomaly*100)} 个百分点，且不属于“持续下降” → 观察。<br>\
 · <strong>正在改善</strong>：最近 3 次中位数比前 3 次好 ≥ ${Math.round(c.improveWindow*100)} 个百分点，且趋势在变好 → 继续观察。</p>\
 <p>缺考不计入计算（但会标注）；有效成绩少于 ${c.minExams} 场的学生归到“数据不足”。一个学生可能同时命中多条，列表里会同时显示主状态与副标签。</p>\
-<p><strong>怎么用这张表</strong>：默认按状态分组列出全班（持续下降在最前）；上方的彩色标签可以点，直接跳到对应分组；往下翻的时候标签和分组标题会一直贴在顶部。点某个学生可以进他的详情页。</p>`;});
+<p><strong>怎么用这张表</strong>：默认按状态分组列出全班（持续下降在最前）；上方的状态标签横排一行，放不下可以左右滑，点一下直接跳到对应分组；往下翻的时候，当前所在分组的标签会自动加粗描边，标签若在可视区外也会自动滑进来。点某个学生可以进他的详情页。</p>`;});
