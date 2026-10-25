@@ -1,6 +1,6 @@
 // 共享状态与通用工具：state/$/$$、考试与成绩的读取换算
 
-const state={view:'rollcall',students:[],history:[],absences:[],exams:[],examResults:[],settings:{},candidates:[],selectedCandidate:null,currentClass:'',difficulty:3,source:'',pendingImport:null,studentSort:'score-desc',studentDetail:null,studentDetailFrom:'',studentListScroll:0,gradeAnalysisOpen:false,statsMode:'timeline',historyStudentId:'',studentCurrentExamId:'',studentPreviousExamId:'',scoreChartMode:'rate',photos:{},seatCollapsed:false,classBatches:[]};
+const state={view:'rollcall',students:[],history:[],absences:[],exams:[],examResults:[],settings:{},candidates:[],selectedCandidate:null,currentClass:'',difficulty:3,source:'',pendingImport:null,studentSort:'score-desc',studentDetail:null,studentDetailFrom:'',studentListScroll:0,gradeAnalysisOpen:false,gradeAnalysisFromDetail:'',statsMode:'timeline',historyStudentId:'',studentCurrentExamId:'',studentPreviousExamId:'',scoreChartMode:'rate',photos:{},seatCollapsed:false,classBatches:[]};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 // 整行可点：行上写 data-*-row；点到行内按钮/链接（详情、删除、评价按钮…）时优先走按钮，不触发整行动作
 function wireRowTap(scopeSel,attr,open){

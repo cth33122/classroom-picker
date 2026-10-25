@@ -1,7 +1,7 @@
 // 入口：视图分发、数据加载、service worker 注册
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v221';
+const APP_VERSION = 'v222';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -138,11 +138,22 @@ function backCloseDetail(){
 function backHandleLayer(){
   if(backCloseTopModal()){backLog('关闭弹窗');return true;}
   if(backCloseDetail())return true;
-  if(state.gradeAnalysisOpen){          // 成绩分析页：返回学生列表
+  if(state.gradeAnalysisOpen){          // 成绩分析页：有来源就回那位学生的详情，否则回学生列表
     state.gradeAnalysisOpen=false;
-    renderStudents();
-    scrollViewTop('students');
-    backLog('退出成绩分析 → 学生列表');
+    const fromDetail=state.gradeAnalysisFromDetail||'';
+    state.gradeAnalysisFromDetail='';
+    const view=document.getElementById('view-students');
+    if(view)view.onscroll=null;
+    if(fromDetail){
+      state.studentDetail=fromDetail;
+      state.studentExamExpand=false;
+      renderStudents();
+      backLog('退出成绩分析 → 学生详情');
+    }else{
+      renderStudents();
+      scrollViewTop('students');
+      backLog('退出成绩分析 → 学生列表');
+    }
     return true;
   }
   if(backViewStack.length>1){

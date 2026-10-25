@@ -179,6 +179,30 @@ function gradeChip(key){
   const meta=GRADE_STATUS_META[key]||GRADE_STATUS_META.stable;
   return `<span class="grade-chip grade-chip-${meta.tone}">${esc(meta.label)}</span>`;
 }
+// 学生详情页里的状态标签：点一下跳到成绩分析，并滚到这位学生的条目
+function gradeStatusChipsFor(student){
+  if(!student)return '';
+  const status=detectGradeStatus(student,gradeStatusConfig(state.settings));
+  const keys=[status.primary].concat(status.tags||[]);
+  return keys.map(key=>`<button type="button" class="detail-status-btn" data-grade-status-jump="${esc(student.id)}" title="到成绩分析里看这位学生（${esc((GRADE_STATUS_META[key]||GRADE_STATUS_META.stable).label)}）">${gradeChip(key)}</button>`).join('');
+}
+function openGradeAnalysisForStudent(id){
+  if(!state.examResults||!state.examResults.length){toast('还没有成绩数据，先导入几场考试成绩');return;}
+  if(!id)return;
+  state.gradeAnalysisFromDetail=id;      // 从这个学生的详情页进来：返回时回到详情页
+  state.gradeAnalysisOpen=true;
+  state.studentDetail=null;
+  state.studentExamExpand=false;
+  renderStudents();
+  const view=$('#view-students');
+  const row=view?view.querySelector(`[data-grade-student="${id}"]`):null;
+  if(!view||!row)return;
+  const delta=row.getBoundingClientRect().top-view.getBoundingClientRect().top-gradeHeadOffset()-6;
+  view.scrollTop=Math.max(0,view.scrollTop+delta);
+  row.classList.add('is-focus');
+  gradeActiveGroup='';
+  gradeScrollSpy();
+}
 function gradeEvidenceText(row,config){
   const e=row.evidence;
   const bits=[];
@@ -283,12 +307,14 @@ function scrollToGradeGroup(key){
 function openGradeAnalysis(){
   if(!state.examResults||!state.examResults.length){toast('还没有成绩数据，先导入几场考试成绩');return;}
   state.gradeAnalysisOpen=true;
+  state.gradeAnalysisFromDetail='';
   state.studentDetail=null;
   renderStudents();
   scrollViewTop('students');
 }
 function closeGradeAnalysis(){
   state.gradeAnalysisOpen=false;
+  state.gradeAnalysisFromDetail='';
   gradeActiveGroup='';
   const view=$('#view-students');
   if(view)view.onscroll=null;

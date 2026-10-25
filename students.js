@@ -46,13 +46,7 @@ ${noteBadge(s)}\
 <button class="secondary detail-focus${s.focus?' on':''}" id="detailFocusBtn">${s.focus?'已关注':'未关注'}</button>\
 <button class="secondary detail-nocall${s.noCall?' on':''}" id="detailNoCallBtn">${s.noCall?'不参与点名':'参与点名'}</button>\
 </div>\
-<details class="identity-fold">\
-<summary>身份 <span class="hint">班级 · 身份编号</span></summary>\
-<div class="identity-body">\
-<div class="identity-row"><span>班级</span><strong>${esc(s.className||'—')}</strong>${classHistoryText(s)?`<span class="hint">${esc(classHistoryText(s))}</span>`:''}</div>\
-<div class="identity-row"><span>身份编号</span><code class="identity-uid">${esc(s.uid||'未建立')}</code></div>\
-</div>\
-</details>\
+<div class="detail-status">${gradeStatusChipsFor(s)}</div>\
 </div>\
 <div class="panel">\
 <h3>成绩趋势</h3>\
@@ -113,6 +107,8 @@ ${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc
   // 头像：点圆形头像直接打开“头像页”（大图 + 拖动/缩放调整裁剪）；没设过头像时先选拍照或相册
   const openAvatar=()=>openStudentAvatar(state.students.find(x=>x.id===id)||s);
   $$('#view-students [data-avatar-edit]').forEach(b=>b.onclick=openAvatar);
+  // 状态标签：点一下跳到成绩分析，并滚到这位学生的条目
+  $$('#view-students [data-grade-status-jump]').forEach(b=>b.onclick=()=>openGradeAnalysisForStudent(b.dataset.gradeStatusJump));
   $('#detailFocusBtn').onclick=async()=>{s.focus=!s.focus;await DB.put(s);renderStudentDetail(id);toast(s.focus?`已把 ${s.name} 设为关注`:`已取消 ${s.name} 的关注`);};$('#detailNoCallBtn').onclick=async()=>{s.noCall=!s.noCall;await DB.put(s);refreshCandidatesAfterSettings();renderStudentDetail(id);toast(s.noCall?`已把 ${s.name} 标记为不参与点名`:`已恢复 ${s.name} 的候选资格`);};$('#editPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openNoteBtn').onclick=()=>openNoteEditor(id);const examToggleBtn=$('#toggleExamList');if(examToggleBtn)examToggleBtn.onclick=()=>{state.studentExamExpand=!state.studentExamExpand;renderStudentDetail(id);};drawScoreChart(s,trendRecords);$('#toggleScoreMode').onclick=()=>{state.scoreChartMode=scoreChartMode()==='raw'?'rate':'raw';renderStudentDetail(id);};$('#viewScoreChart').onclick=()=>openScoreChart(records);$('#downloadScoreChartInline').onclick=()=>{const canvas=$('#scoreChart');const link=document.createElement('a');link.download='成绩趋势图.png';link.href=canvas.toDataURL('image/png');link.click();};
 }
 

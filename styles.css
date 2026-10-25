@@ -238,6 +238,10 @@ body.modal-open .view-track { touch-action:none; }
 .batch-slider input { flex:1 1 auto; min-width:80px; accent-color:var(--teal); }
 /* 成绩分析页：学生页里的二级页面 */
 .student-exam-line { margin:0 0 8px; }
+/* 学生详情页的状态标签（点一下跳到成绩分析里该生的条目） */
+.detail-status { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+.detail-status-btn { border:0; background:transparent; padding:0; font:inherit; }
+.grade-row.is-focus { background:var(--mint); border-radius:6px; box-shadow:inset 0 0 0 1px var(--teal); }
 .student-section-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .student-section-head .student-section-title { margin:0; }
 .student-section-head .secondary { min-height:32px; padding:4px 12px; font-size:13px; flex:0 0 auto; }
