@@ -105,9 +105,34 @@ function classFix(value,digits){
 }
 
 // ---------- 渲染 ----------
+// 重画时保住两个滚动位置：整页纵向滚动、顶部考试标签条的横向位置。
+// 否则点一下标签，innerHTML 一换，标签条就回到最左边，刚点的那个标签跑掉了。
+let classViewScroll=0;
+let classChipScroll=0;
+function captureClassAnalysisScroll(){
+  const view=$('#view-students');
+  if(view)classViewScroll=view.scrollTop;
+  const strip=$('#classExamChips');
+  if(strip)classChipScroll=strip.scrollLeft;
+}
+function restoreClassAnalysisScroll(){
+  const view=$('#view-students');
+  if(view&&view.scrollTop!==classViewScroll)view.scrollTop=classViewScroll;
+  const strip=$('#classExamChips');
+  if(!strip)return;
+  strip.scrollLeft=classChipScroll;
+  // 当前选中的标签若在可视区外，再把它轻轻挪进来（只动标签条，不动整页）
+  const active=strip.querySelector('.is-active');
+  if(!active)return;
+  const left=active.offsetLeft,right=left+active.offsetWidth;
+  if(left<strip.scrollLeft+4)strip.scrollLeft=Math.max(0,left-10);
+  else if(right>strip.scrollLeft+strip.clientWidth-4)strip.scrollLeft=right-strip.clientWidth+10;
+  classChipScroll=strip.scrollLeft;
+}
 function renderClassAnalysis(){
   const view=$('#view-students');
   if(!view)return;
+  captureClassAnalysisScroll();
   const cfg=classAnalysisConfig(state.settings);
   const cls=state.currentClass?normalizeClassName(state.currentClass):'';
   const all=classAnalysisSeries(cls,cfg);
@@ -244,6 +269,7 @@ ${paramPanel}`;
   bindClassAnalysisActions();
   classChartSeries=withData;
   drawClassStack($('#classTrend'),withData,cfg);
+  restoreClassAnalysisScroll();
 }
 
 // 名单流动：谁进了/出了段前 X%、段后 Y%
@@ -273,7 +299,7 @@ ${group(`脱离段后 ${cfg.bottomPercent}%`,'没有变化',namesIn(prev.slice,n
 }
 
 // 三段构成柱状图：每根柱子 = 一场考试（默认最近 6 场，从左到右按时间正序），
-// 柱内自下而上叠 段前 / 中间 / 段后 三段占比，合起来 100%。
+// 柱内自下而是 段后 / 中间 / 段前（绿在上、黄在下），三段占比合起来 100%。
 // 宽度按“每根柱子至少这么宽”算：容器放得下就铺满，放不下就让外层横向滑动（不再被右边裁掉）。
 const CLASS_STACK_LIMIT=6;
 const CLASS_BAR_MIN=46;          // 手机上每根柱子最小宽度（px）
@@ -320,22 +346,23 @@ function paintClassStack(canvas,entries,cfg,opts){
     ctx.beginPath();ctx.moveTo(pad.left,yy);ctx.lineTo(pad.left+plotW,yy);ctx.stroke();
     ctx.fillText((v*100).toFixed(0)+'%',pad.left-6,yy+4);
   });
-  // 段里的自然分界（虚线）
+  // 段里的自然分界（虚线）：柱内自下而是 段后 / 中间 / 段前，
+  // 所以下面那条在「段后占比」的高度、上面那条在「100%−段前占比」的高度
   const baseline=(value,color)=>{
     const yy=y(value);
     ctx.save();ctx.setLineDash([5,4]);ctx.strokeStyle=color;ctx.lineWidth=1.3;
     ctx.beginPath();ctx.moveTo(pad.left,yy);ctx.lineTo(pad.left+plotW,yy);ctx.stroke();ctx.restore();
   };
-  baseline(cfg.topPct,'#0f9c8f');
-  baseline(1-cfg.bottomPct,'#d97706');
-  // 每根柱子：从下往上 段前 → 中间 → 段后
+  baseline(cfg.bottomPct,'#d97706');        // 段后 与 中间 的分界
+  baseline(1-cfg.topPct,'#0f9c8f');         // 中间 与 段前 的分界
+  // 每根柱子：自下而上是 段后 → 中间 → 段前（绿在上、黄在下）
   const colors={top:'#0f9c8f',mid:'#c9d7d4',bottom:'#f0a02a'};
   entries.forEach((x,index)=>{
     const cx=pad.left+slot*(index+0.5),left=cx-barW/2;
     const parts=[
-      {value:x.slice.top.share||0,color:colors.top,label:classPctText(x.slice.top.share,0),dark:false},
-      {value:x.slice.mid.share||0,color:colors.mid,label:classPctText(x.slice.mid.share,0),dark:true},
       {value:x.slice.bottom.share||0,color:colors.bottom,label:classPctText(x.slice.bottom.share,0),dark:false},
+      {value:x.slice.mid.share||0,color:colors.mid,label:classPctText(x.slice.mid.share,0),dark:true},
+      {value:x.slice.top.share||0,color:colors.top,label:classPctText(x.slice.top.share,0),dark:false},
     ];
     let acc=0;
     parts.forEach(part=>{
@@ -463,6 +490,7 @@ function openClassAnalysis(fromStudentId){
   state.gradeAnalysisOpen=false;
   state.studentDetail=null;
   state.studentExamExpand=false;
+  classViewScroll=0;classChipScroll=0;   // 打开这一页时从头开始，标签条也靠左
   renderStudents();
   scrollViewTop('students');
 }
@@ -470,6 +498,8 @@ function closeClassAnalysis(){
   const from=state.classAnalysisFromDetail||'';
   state.classAnalysisOpen=false;
   state.classAnalysisFromDetail='';
+  state.classAnalysisExamId='';
+  classViewScroll=0;classChipScroll=0;
   const view=$('#view-students');
   if(view)view.onscroll=null;
   if(from){state.studentDetail=from;state.studentDetailFrom='students';renderStudents();}
@@ -533,8 +563,8 @@ registerPanelHelp('class.stack','三段构成',
   () => {
     const c=classAnalysisConfig(state.settings);
     return `<p><strong>每根柱子＝一场考试</strong>，从左到右按时间先后（最左边最早、最右边最近），默认只画最近 ${CLASS_STACK_LIMIT} 场。</p>\
-<p><strong>柱子怎么叠</strong>：自下而上是 段前 ${c.topPercent}% → 中间段 → 段后 ${c.bottomPercent}%，三段加起来正好 100%，所以柱子高度都一样，比的是“内部的构成”。</p>\
-<p><strong>两条虚线</strong>：段里的自然分界——下面那条在 ${c.topPercent}% 的高度、上面那条在 ${100-c.bottomPercent}% 的高度。如果每根柱子的分界线都贴着虚线，说明本班的构成和全段平均一样；青色块比虚线高＝尖子多，橙色块压过下面那条虚线越多＝尾巴越重。</p>\
+<p><strong>柱子怎么叠</strong>：<strong>绿色（段前 ${c.topPercent}%）在上、黄色（段后 ${c.bottomPercent}%）在下</strong>，中间是中间段；三段加起来正好 100%，所以柱子高度都一样，比的是“内部的构成”。</p>\
+<p><strong>两条虚线</strong>：段里的自然分界——下面那条在段后 ${c.bottomPercent}% 的高度，上面那条在 ${100-c.topPercent}% 的高度。每根柱子的分界线都贴着虚线时，说明本班构成和全段平均一样；绿色块涨过上面那条虚线＝尖子多，黄色块压过下面那条虚线越多＝尾巴越重。</p>\
 <p><strong>看图操作</strong>：柱子比屏幕宽时可以直接左右滑动（会提示“左右滑动看图”）；<strong>点图</strong>或点“查看大图”可以放大看，大图里点“下载图片”存 PNG。柱子太密时用大图看更清楚。</p>`;
   });
 
