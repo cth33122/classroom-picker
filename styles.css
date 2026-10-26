@@ -581,3 +581,19 @@ button.avatar:hover { border-color:var(--teal); }
 /* 班级分析：大图弹窗（比普通弹窗宽，图可以横向滚动看全） */
 .chart-modal-card { width:min(1100px,100%); }
 .chart-modal-card .chart-large-wrap { max-height:calc(100vh - 200px); }
+/* 年段班级排名：一行一个班，本班高亮，得分率带横条 */
+.class-rank-table td, .class-rank-table th { vertical-align:middle; }
+.class-rank-no { width:46px; color:var(--muted); font-variant-numeric:tabular-nums; }
+.class-rank-name { white-space:nowrap; }
+.class-rank-me { margin-left:6px; padding:1px 7px; border-radius:999px; background:var(--teal); color:#fff; font-size:11px; font-weight:600; }
+.class-rank-rate { min-width:170px; white-space:nowrap; }
+.class-rank-bar { display:inline-block; vertical-align:middle; width:110px; height:9px; margin-right:8px; border-radius:999px; background:#eef2f1; overflow:hidden; }
+.class-rank-bar i { display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,#0f766e,#34b3a6); }
+.class-rank-count { width:64px; text-align:right; font-variant-numeric:tabular-nums; color:var(--muted); }
+.class-rank-table tr.is-current td { background:#e4f3ef; font-weight:700; }
+.class-rank-table tr.is-current .class-rank-bar i { background:linear-gradient(90deg,#0b5f58,#0f9c8f); }
+.class-rank-table tfoot td { color:var(--muted); border-top:2px solid var(--line); }
+/* 二级分析页（成绩分析 / 班级分析）：锁掉横向滑动切页。
+   overflow-x:hidden 只挡“手指拖”的横向滚动，标签点切页（程序设置 scrollLeft）照旧生效；
+   里面的标签条、表格、图仍然是各自独立的横向滚动条，不受影响。 */
+.view-track.no-swipe { overflow-x:hidden; scroll-snap-type:none; }

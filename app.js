@@ -1,7 +1,7 @@
 // 入口：视图分发、数据加载、service worker 注册
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v227';
+const APP_VERSION = 'v229';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -29,6 +29,7 @@ function highlightView(name){
   state.view=name;
   $$('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${name}`));
   $$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.view===name));
+  if(typeof syncSwipeLock==='function')syncSwipeLock();   // 换页时同步“是否禁掉左右滑动”
 }
 // 点标签：滚到对应页；点“学生”标签时回到学生列表初始页并置顶
 function setActiveView(name,options){
@@ -61,10 +62,27 @@ if(window.visualViewport){
   window.visualViewport.addEventListener('scroll',syncAppHeight,{passive:true});
 }
 // 滑动/滚动后同步当前页与标签高亮（页面不重绘，状态与滚动位置都保留）
+// 二级分析页里锁了横向滑动（见 syncSwipeLock），这里再兜一层：万一被滚走，立刻拉回当前页
 trackEl?.addEventListener('scroll',()=>{
+  if(state.gradeAnalysisOpen||state.classAnalysisOpen){
+    const target=viewIndex*trackWidth();
+    if(Math.abs(trackEl.scrollLeft-target)>1)trackEl.scrollLeft=target;
+    return;
+  }
   const index=Math.max(0,Math.min(VIEW_NAMES.length-1,Math.round(trackEl.scrollLeft/trackWidth())));
   if(index!==viewIndex){viewIndex=index;highlightView(VIEW_NAMES[index]);}
 },{passive:true});
+// 成绩分析 / 班级分析页：禁掉“左右滑动切页”。这两个页面顶部有一排可横向滑动的标签，
+// 手指一蹭很容易把整页划到旁边的页面去，所以进去就把轨道的横向滚动关掉，回学生列表再放开。
+function syncSwipeLock(){
+  if(!trackEl)return;
+  const lock=Boolean((state.gradeAnalysisOpen||state.classAnalysisOpen)&&state.view==='students');
+  trackEl.classList.toggle('no-swipe',lock);
+  if(lock){
+    const target=viewIndex*trackWidth();
+    if(Math.abs(trackEl.scrollLeft-target)>1)trackEl.scrollLeft=target;
+  }
+}
 window.addEventListener('load',async()=>{if('serviceWorker'in navigator){const hadController=!!navigator.serviceWorker.controller;navigator.serviceWorker.addEventListener('controllerchange',()=>{if(hadController&&!window.__swReloaded&&!window.__forceReloading){window.__swReloaded=true;location.reload();}});navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).catch(()=>{});}try{await reload();}catch(err){toast(`本地数据初始化失败：${err.message}`);}initBackGuard();syncAppHeight();setTimeout(syncAppHeight,0);setTimeout(syncAppHeight,300);let deferred;window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferred=e;$('#installBtn').hidden=false;});$('#installBtn').addEventListener('click',async()=>{if(deferred){deferred.prompt();deferred=null;}});});
 // Keep exam stores in the reload transaction and preserve an empty previous exam for the oldest exam.
 

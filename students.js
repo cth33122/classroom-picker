@@ -325,6 +325,8 @@ function toggleStudentHeader(key){const prefix=key;state.studentSort=state.stude
 // 打开某个学生的详情页并切换到“学生”标签（供座位表点击调用）
 
 function renderStudents(){
+  // 成绩分析 / 班级分析页里禁止左右滑动切页（手势会和顶部的横向标签条打架）
+  if(typeof syncSwipeLock==='function')syncSwipeLock();
   if(state.studentDetail){renderStudentDetail(state.studentDetail);return;}
   if(state.gradeAnalysisOpen){renderGradeAnalysis();return;}
   if(state.classAnalysisOpen){renderClassAnalysis();return;}

@@ -169,6 +169,30 @@ ${barRow('中间段',s.mid.count,s.mid.share,midBaseline,'is-mid')}\
 ${barRow(`段后 ${cfg.bottomPercent}%`,s.bottom.count,s.bottom.share,cfg.bottomPct,'is-bottom')}\
 </div>\
 ${s.noRank?`<p class="hint">另有 ${s.noRank} 人有成绩但没有段次，没算进三段占比。</p>`:''}`;
+  // 年段班级排名：这场考试每个班的平均得分率，从高到低，本班高亮
+  const totalScore=Number(focus.exam.totalScore)||0;
+  const rateOf=avg=>(totalScore>0&&avg!==null&&avg!==undefined)?avg/totalScore:null;
+  const segRate=rateOf(seg.avg);
+  const rankRows=(seg.classList||[]).map(c=>{
+    const rate=rateOf(c.avg);
+    const isMe=c.className===cls;
+    const width=rate===null?0:Math.max(0,Math.min(1,rate))*100;
+    return `<tr class="${isMe?'is-current':''}">\
+<td class="class-rank-no">${c.rank}</td>\
+<td class="class-rank-name">${esc(c.className)}${isMe?'<span class="class-rank-me">本班</span>':''}</td>\
+<td class="class-rank-rate"><span class="class-rank-bar"><i style="width:${width.toFixed(1)}%"></i></span><b>${classPctText(rate,1)}</b></td>\
+<td class="class-rank-count">${c.count}</td>\
+</tr>`;
+  }).join('');
+  const rankPanel=`<div class="panel" id="classRankPanel">\
+<h3 class="with-help">年段班级排名 ${panelHelpBtn('class.ranks','年段班级排名的说明')}<span class="hint">${examLine}</span></h3>\
+<div class="class-table-wrap"><table class="class-table class-rank-table">\
+<thead><tr><th>名次</th><th>班级</th><th>平均得分率</th><th>人数</th></tr></thead>\
+<tbody>${rankRows||'<tr><td colspan="4" class="hint">这场考试没有可比较的班级数据</td></tr>'}</tbody>\
+<tfoot><tr><td>—</td><td>全段</td><td class="class-rank-rate"><b>${classPctText(segRate,1)}</b></td><td>${seg.count}</td></tr></tfoot>\
+</table></div>\
+${seg.classList.length<2?'<p class="hint">库里只有本班的数据，导入全年段汇总表才能和其它班比。</p>':''}\
+</div>`;
   // 逐场对比表（新的在上面）
   const tableRows=[...withData].reverse().map(x=>{
     const sc=x.slice;
@@ -198,7 +222,7 @@ ${backBtn}\
 <div class="class-kpis">${kpiHtml}</div>\
 ${bars}\
 </div>\
-<div class="panel"><h3 class="with-help">逐场对比 ${panelHelpBtn('class.table','逐场对比的说明')}</h3>${table}</div>\
+${rankPanel}\
 ${withData.some(x=>x.slice.rankedCount>0)?`<div class="panel"><h3 class="with-help">三段构成（最近 ${Math.min(CLASS_STACK_LIMIT,withData.length)} 场）${panelHelpBtn('class.stack','三段构成图的说明')}</h3>\
 <div class="class-legend">\
 <span class="class-legend-item"><i class="is-top"></i>段前 ${cfg.topPercent}%</span>\
@@ -212,9 +236,10 @@ ${withData.some(x=>x.slice.rankedCount>0)?`<div class="panel"><h3 class="with-he
 <button type="button" class="secondary" id="viewClassChart">查看大图</button>\
 <button type="button" class="secondary" id="downloadClassChart">下载图片</button>\
 </div>\
-${withData.length>CLASS_STACK_LIMIT?`<p class="hint">共 ${withData.length} 场，这里只画最近 ${CLASS_STACK_LIMIT} 场；更早的在上面的逐场对比表里。</p>`:''}\
+${withData.length>CLASS_STACK_LIMIT?`<p class="hint">共 ${withData.length} 场，这里只画最近 ${CLASS_STACK_LIMIT} 场；更早的看下面的逐场对比表。</p>`:''}\
 </div>`:`<div class="panel"><h3>三段构成</h3><div class="empty">这些考试都没有段次，分不出三段</div></div>`}\
 ${flow}\
+<div class="panel"><h3 class="with-help">逐场对比 ${panelHelpBtn('class.table','逐场对比的说明')}</h3>${table}</div>\
 ${paramPanel}`;
   bindClassAnalysisActions();
   classChartSeries=withData;
@@ -460,6 +485,16 @@ registerPanelHelp('class.analysis','班级分析',
 <p><strong>为什么比“比例”</strong>：段前 ${c.topPercent}% 本身就是全段的 ${c.topPercent}% 学生，所以本班前段占比若是 ${(c.topPercent*2)}%，就等于尖子生比全段平均多一倍。这么比不受班级人数、满分多少的影响。</p>\
 <p><strong>三段怎么分</strong>：段排位 = 段次 ÷ 当场段人数（段人数取当场最大段次，缺考的人不占名次）。段次落在前 ${c.topPercent}% 的算“段前”，落在后 ${c.bottomPercent}% 的算“段后”，中间是剩下 ${mid}%。百分比在页面最下面的“分段参数”里改。</p>\
 <p><strong>数据要求</strong>：班均分排名和段均分需要导入“全年段汇总表”（带班级列、包含其它班）；只导入本班数据时这两项显示 —，三段占比照样能算。换过班的学生按“当场记录的班级”统计，历次对比不会把人算串。</p>`;
+  });
+
+registerPanelHelp('class.ranks','年段班级排名',
+  () => {
+    const c=classAnalysisConfig(state.settings);
+    return `<p>这张表只针对<strong>当前这场考试</strong>（标题右边写着是哪一场；点上方考试标签可以换场次）。</p>\
+<p><strong>平均得分率</strong> = 该班这场考试的<strong>平均分 ÷ 这场满分</strong>。用得分率而不是原始分，是为了不同场次、不同满分之间也能比。</p>\
+<p><strong>名次</strong>：按平均得分率从高到低排，<strong>数值相同算并列</strong>（名次会跳过，例如两个第 3 名之后是第 5 名）。<strong>人数</strong>是该班这场有成绩的人数。</p>\
+<p><strong>高亮行</strong>就是当前班；最后一行「全段」是全体学生的平均得分率，用来一眼看出本班在段平均之上还是之下。表里的横条长度＝得分率大小，越长越好。</p>\
+<p>只导入了本班数据时这里只会有一行（本班＝全段），要跟别的班比就导入全年段汇总表（带班级列、包含其它班）。三段占比用的是段次，和这张表的数据源不同，所以可能一张有数据、另一张显示 —。</p>`;
   });
 
 registerPanelHelp('class.params','分段参数',
