@@ -328,18 +328,27 @@ function renderStudents(){
   // 成绩分析 / 班级分析页里禁止左右滑动切页（手势会和顶部的横向标签条打架）
   if(typeof syncSwipeLock==='function')syncSwipeLock();
   if(state.studentDetail){renderStudentDetail(state.studentDetail);return;}
-  if(state.gradeAnalysisOpen){renderGradeAnalysis();return;}
-  if(state.classAnalysisOpen){renderClassAnalysis();return;}
+  // 这两个二级页面万一渲染出错，别把学生页整死：记日志、退回学生列表（用户也能继续用）
+  if(state.gradeAnalysisOpen){
+    try{renderGradeAnalysis();return;}
+    catch(err){console.error('成绩分析渲染失败：',err);state.gradeAnalysisOpen=false;state.gradeAnalysisFromDetail='';toast('成绩分析页出错，已回到学生列表');}
+  }
+  if(state.classAnalysisOpen){
+    try{renderClassAnalysis();return;}
+    catch(err){console.error('班级分析渲染失败：',err);state.classAnalysisOpen=false;state.classAnalysisFromDetail='';toast('班级分析页出错，已回到学生列表');}
+  }
   const filtered=state.students.filter(s=>!state.currentClass||s.className===state.currentClass),exams=orderedExams();
-  // 不再提供“选哪场考试”：一律看最近一场；上一场只用来算“位次变化”列和排序
-  const latestExam=exams[0]||null;
-  state.studentCurrentExamId=latestExam?latestExam.id:'';
+  // 当前看哪一场：默认最近一场；用户点“当前考试”那行选过别的场次就沿用他的选择（换页/重绘都不丢）
+  const pickedExam=exams.find(e=>e.id===state.studentCurrentExamId)||exams[0]||null;
+  state.studentCurrentExamId=pickedExam?pickedExam.id:'';
   state.studentPreviousExamId=previousExamIdFor(state.studentCurrentExamId);
-  const examLine=latestExam
-    ?`当前考试：${esc(latestExam.name||latestExam.date||'未命名考试')}${latestExam.date?`（${esc(latestExam.date)}）`:''}`
+  const examLine=pickedExam
+    ?`当前考试：${esc(pickedExam.name||pickedExam.date||'未命名考试')}${pickedExam.date?`（${esc(pickedExam.date)}）`:''}`
     :'当前考试：暂无考试';
   $('#view-students').innerHTML=`${classChangeBannerHtml(state.currentClass)}<div class="panel">\
-<p class="hint student-exam-line">${examLine}</p>\
+<button type="button" class="hint student-exam-line student-exam-pick" id="pickExamBtn" title="点这里换一场考试">\
+<span>${examLine}</span><span class="student-exam-caret" aria-hidden="true">▾ 换一场</span>\
+</button>\
 <div class="field">\
 <input id="studentSearch" placeholder="输入姓名搜索学生">\
 </div>\
@@ -364,7 +373,55 @@ function renderStudents(){
     $$('[data-student-sort]').forEach(b=>b.onclick=()=>toggleStudentHeader(b.dataset.studentSort));
     $('#gradeAnalysisBtn').onclick=()=>openGradeAnalysis();
     $('#classAnalysisBtn').onclick=()=>openClassAnalysis();
+    const pickBtn=$('#pickExamBtn');
+    if(pickBtn)pickBtn.onclick=()=>openExamPicker();
     bindStudentActions();
     bindClassChangeBanner();      // 本班班级变动提示条：核对无误 / 撤销这批变动
     
+}
+
+// 选考试：点学生页那行“当前考试”弹出，选完学生列表的“当前成绩 / 位次变化”按这一场算
+function openExamPicker(){
+  const exams=orderedExams();
+  if(!exams.length){toast('还没有导入考试成绩');return;}
+  document.getElementById('examPickerModal')?.remove();
+  const cls=state.currentClass||'';
+  const rows=exams.map(e=>{
+    const active=e.id===state.studentCurrentExamId;
+    const count=(state.examResults||[]).filter(r=>{
+      if(!r||r.examId!==e.id)return false;
+      if(!cls)return true;
+      return normalizeClassName((r.result||{}).className)===normalizeClassName(cls);
+    }).length;
+    return `<button type="button" class="exam-pick-row${active?' is-active':''}" data-exam-pick="${esc(e.id)}">\
+<span class="exam-pick-name">${esc(e.name||'未命名考试')}${active?'<span class="exam-pick-tag">当前</span>':''}</span>\
+<span class="hint">${esc(e.date||'')}${count?` · ${count} 人有成绩`:' · 本班没有成绩'}</span>\
+</button>`;
+  }).join('');
+  const modal=document.createElement('div');
+  modal.id='examPickerModal';modal.className='modal-backdrop';
+  modal.innerHTML=`<div class="modal-card" role="dialog" aria-modal="true">\
+<div class="modal-header"><h2>选择考试</h2><button type="button" class="icon-button modal-close" aria-label="关闭">×</button></div>\
+<div class="rule-help-body"><p class="hint">学生列表里的「当前成绩」「位次变化」按你选的这一场算；位次变化是和它<strong>前一场</strong>比。</p></div>\
+<div class="exam-pick-list">${rows}</div>\
+<div class="actions">\
+<button type="button" class="secondary" id="examPickLatest">看最近一场</button>\
+<button type="button" class="secondary" id="examPickClose">关闭</button>\
+</div>\
+</div>`;
+  document.body.appendChild(modal);
+  const close=()=>modal.remove();
+  const choose=id=>{
+    state.studentCurrentExamId=id||'';
+    close();
+    renderStudents();
+    const now=orderedExams().find(x=>x.id===state.studentCurrentExamId);
+    if(now)toast(`已切到「${now.name||now.date}」`);
+  };
+  modal.querySelector('.modal-close').onclick=()=>close();
+  modal.onclick=e=>{if(e.target===modal)close();};
+  $$('#examPickerModal [data-exam-pick]').forEach(b=>b.onclick=()=>choose(b.dataset.examPick));
+  const latest=modal.querySelector('#examPickLatest');
+  if(latest)latest.onclick=()=>choose((orderedExams()[0]||{}).id||'');
+  modal.querySelector('#examPickClose').onclick=()=>close();
 }

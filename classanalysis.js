@@ -232,8 +232,21 @@ ${seg.classList.length<2?'<p class="hint">库里只有本班的数据，导入�
   const table=`<div class="class-table-wrap"><table class="class-table">\
 <thead><tr><th>考试</th><th>本班均分</th><th>段均分</th><th>班排名</th><th>段前 ${cfg.topPercent}%</th><th>中间</th><th>段后 ${cfg.bottomPercent}%</th></tr></thead>\
 <tbody>${tableRows}</tbody></table></div>`;
-  // 名单流动（最近两场）
-  const flow=prev?classFlowHtml(prev,focus,cfg):'';
+  // 学生分布详情：本场段前 / 段后两份名单（连续两场用彩框、连续三场用反色）
+  const prev2=focusIndex>1?withData[focusIndex-2]:null;
+  const flow=prev?classFlowHtml(prev,focus,cfg,prev2):'';
+  // 近 6 次考试的“本班段排名”折线（名次越小越好，所以纵轴 1 在最上面）
+  const rankLineEntries=classRankEntries(withData,CLASS_RANK_LINE_LIMIT);
+  const rankLinePanel=rankLineEntries.length>=2
+    ?`<div class="panel" id="classRankLinePanel"><h3 class="with-help">近 ${rankLineEntries.length} 次考试的段排名变化 ${panelHelpBtn('class.rankline','段排名折线的说明')}<span class="hint">数字越小越好</span></h3>\
+<div class="class-chart-scroll" id="classRankLineScroll"><canvas id="classRankLine" class="class-chart-canvas" title="点一下看大图"></canvas></div>\
+<p class="hint class-chart-swipe" id="classRankLineSwipeHint" style="display:none">← 左右滑动看图 →</p>\
+<div class="class-chart-actions">\
+<button type="button" class="secondary" id="viewClassRankLine">查看大图</button>\
+<button type="button" class="secondary" id="downloadClassRankLine">下载图片</button>\
+</div>\
+</div>`
+    :`<div class="panel"><h3>段排名变化</h3><div class="empty">至少要有两次“多班对比”的考试，才能画出段排名的变化</div></div>`;
   view.innerHTML=`<div class="panel grade-analysis-head-panel" id="classAnalysisHead">\
 <div class="grade-analysis-head">\
 <h2 class="with-help">班级分析 ${panelHelpBtn('class.analysis','班级分析的说明')}
@@ -247,7 +260,7 @@ ${backBtn}\
 <div class="class-kpis">${kpiHtml}</div>\
 ${bars}\
 </div>\
-${rankPanel}\
+${rankLinePanel}\
 ${withData.some(x=>x.slice.rankedCount>0)?`<div class="panel"><h3 class="with-help">三段构成（最近 ${Math.min(CLASS_STACK_LIMIT,withData.length)} 场）${panelHelpBtn('class.stack','三段构成图的说明')}</h3>\
 <div class="class-legend">\
 <span class="class-legend-item"><i class="is-top"></i>段前 ${cfg.topPercent}%</span>\
@@ -264,37 +277,44 @@ ${withData.some(x=>x.slice.rankedCount>0)?`<div class="panel"><h3 class="with-he
 ${withData.length>CLASS_STACK_LIMIT?`<p class="hint">共 ${withData.length} 场，这里只画最近 ${CLASS_STACK_LIMIT} 场；更早的看下面的逐场对比表。</p>`:''}\
 </div>`:`<div class="panel"><h3>三段构成</h3><div class="empty">这些考试都没有段次，分不出三段</div></div>`}\
 ${flow}\
+${rankPanel}\
 <div class="panel"><h3 class="with-help">逐场对比 ${panelHelpBtn('class.table','逐场对比的说明')}</h3>${table}</div>\
 ${paramPanel}`;
   bindClassAnalysisActions();
   classChartSeries=withData;
   drawClassStack($('#classTrend'),withData,cfg);
+  drawClassRankLine($('#classRankLine'),withData);
   restoreClassAnalysisScroll();
 }
 
-// 名单流动：谁进了/出了段前 X%、段后 Y%
-function classFlowHtml(prev,current,cfg){
-  const byId=(slice)=>{const m=new Map();[].concat(slice.top.students,slice.mid.students,slice.bottom.students).forEach(x=>m.set(x.id,x));return m;};
-  const prevTop=new Set(prev.slice.top.students.map(x=>x.id)),currentTop=new Set(current.slice.top.students.map(x=>x.id));
-  const prevBottom=new Set(prev.slice.bottom.students.map(x=>x.id)),currentBottom=new Set(current.slice.bottom.students.map(x=>x.id));
-  const namesIn=(slice,set)=>{
-    const m=byId(slice);
-    return [...set].map(id=>m.get(id)).filter(Boolean);
+// 学生分布详情：本场段前 / 段后两份名单
+// 标注分三档：白底＝这一场才进来；彩框＝上一场也在同一组；反色（深底浅字）＝连续三场都在同一组
+function classFlowHtml(prev,current,cfg,prev2){
+  // prev / current / prev2 都是“场次条目”{exam, slice}，学生名单在 entry.slice.top|bottom.students 里
+  const idsOf=(entry,key)=>{
+    const box=entry&&entry.slice?entry.slice[key]:null;
+    return new Set(((box&&box.students)||[]).map(x=>x.id));
   };
-  const enterTop=[...currentTop].filter(id=>!prevTop.has(id));
-  const leaveTop=[...prevTop].filter(id=>!currentTop.has(id));
-  const enterBottom=[...currentBottom].filter(id=>!prevBottom.has(id));
-  const leaveBottom=[...prevBottom].filter(id=>!currentBottom.has(id));
-  const group=(title,hint,list)=>{
-    const chips=list.map(x=>`<button type="button" class="class-flow-name" data-class-student="${esc(x.id)}" title="段次 ${x.gradeRank??'—'}（${classPctText(x.pct)}）">${esc(x.name)}</button>`).join('');
-    return `<div class="class-flow-group"><span class="class-flow-title">${esc(title)}<span class="hint">${esc(list.length)} 人</span></span>\
-${list.length?`<span class="class-flow-chips">${chips}</span>`:`<span class="hint">${esc(hint)}</span>`}</div>`;
+  const prevTop=idsOf(prev,'top'),prevBottom=idsOf(prev,'bottom');
+  const prev2Top=prev2?idsOf(prev2,'top'):new Set();
+  const prev2Bottom=prev2?idsOf(prev2,'bottom'):new Set();
+  const group=(label,list,prevSet,prev2Set,tone)=>{
+    const chips=list.map(x=>{
+      const kept=prevSet.has(x.id);
+      const third=kept&&prev2Set.has(x.id);
+      const cls=`class-flow-name ${tone}${third?' is-third':(kept?' is-again':'')}`;
+      const notes=third?'连续三场都在这一组':(kept?'上一场也在这一组':'这一场才进来');
+      return `<button type="button" class="${cls}" data-class-student="${esc(x.id)}" \
+title="段次 ${x.gradeRank??'—'}（段排位 ${classPctText(x.pct)}）· ${notes}">${esc(x.name)}</button>`;
+    }).join('');
+    return `<div class="class-flow-group">\
+<span class="class-flow-title">${esc(label)}<span class="hint">${list.length} 人</span></span>\
+${list.length?`<span class="class-flow-chips">${chips}</span>`:'<span class="hint">这一场没有</span>'}</div>`;
   };
-  return `<div class="panel"><h3 class="with-help">名单流动：${esc(prev.exam.name||prev.exam.date||'')} → ${esc(current.exam.name||current.exam.date||'')} ${panelHelpBtn('class.flow','名单流动的说明')}</h3>\
-${group(`新进段前 ${cfg.topPercent}%`,'',namesIn(current.slice,new Set(enterTop)))}\
-${group(`掉出段前 ${cfg.topPercent}%`,'没有变化',namesIn(prev.slice,new Set(leaveTop)))}\
-${group(`掉进段后 ${cfg.bottomPercent}%`,'',namesIn(current.slice,new Set(enterBottom)))}\
-${group(`脱离段后 ${cfg.bottomPercent}%`,'没有变化',namesIn(prev.slice,new Set(leaveBottom)))}\
+  const range=prev?`${esc(prev.exam.name||prev.exam.date||'')} → ${esc(current.exam.name||current.exam.date||'')}`:'';
+  return `<div class="panel"><h3 class="with-help">学生分布详情：${range} ${panelHelpBtn('class.flow','学生分布详情的说明')}</h3>\
+${group(`段前 ${cfg.topPercent}%`,current.slice.top.students,prevTop,prev2Top,'is-top')}\
+${group(`段后 ${cfg.bottomPercent}%`,current.slice.bottom.students,prevBottom,prev2Bottom,'is-bottom')}\
 </div>`;
 }
 
@@ -405,27 +425,104 @@ function syncClassChartHint(){
   const scrollable=wrap.scrollWidth>wrap.clientWidth+2;
   hint.style.display=scrollable?'':'none';
 }
+
+// ---------- 段排名折线：本班近几次考试“班均分在段里的名次” ----------
+// 名次越小越好，所以纵轴把第 1 名放在最上面；每个点旁边写“第M/N个班”。
+const CLASS_RANK_LINE_LIMIT=6;
+function classRankEntries(series,limit){
+  return (series||[])
+    .filter(x=>x.slice&&x.slice.rank&&x.slice.classCount>1)
+    .slice(-(limit||CLASS_RANK_LINE_LIMIT));
+}
+function paintClassRankLine(canvas,entries,opts){
+  const o=opts||{};
+  const wrap=canvas.parentElement;
+  const avail=Math.max(240,o.forceWidth||(wrap?wrap.clientWidth:0)||(window.innerWidth||360)-40);
+  const cssW=avail;
+  const cssH=o.large?Math.max(300,Math.round(cssW*0.5)):Math.max(200,Math.round(cssW*0.62));
+  const dpr=Math.min(2,window.devicePixelRatio||1);
+  canvas.style.display='block';
+  canvas.style.width=cssW+'px';
+  canvas.style.height=cssH+'px';
+  canvas.width=Math.round(cssW*dpr);
+  canvas.height=Math.round(cssH*dpr);
+  const ctx=canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssW,cssH);
+  const pad={top:o.large?20:16,right:o.large?30:20,bottom:o.large?48:42,left:o.large?46:38};
+  const plotW=Math.max(40,cssW-pad.left-pad.right),plotH=Math.max(60,cssH-pad.top-pad.bottom);
+  const small=o.large?'12px system-ui,sans-serif':'11px system-ui,sans-serif';
+  const maxRank=Math.max(1,...entries.map(x=>x.slice.classCount||1));
+  const x=i=>pad.left+(entries.length===1?plotW/2:i*plotW/(entries.length-1));
+  const y=rank=>pad.top+(Math.max(1,Math.min(maxRank,rank))-1)/Math.max(1,maxRank-1)*plotH;
+  const teal='#0f766e';
+  // 横向网格 + 名次刻度（1、中位、末尾）
+  const ticks=[...new Set([1,Math.round((1+maxRank)/2),maxRank])].filter(v=>v>=1);
+  ctx.font=small;ctx.textAlign='right';
+  ticks.forEach(v=>{
+    const yy=y(v);
+    ctx.strokeStyle=v===1?'#dfe8e6':'#eef2f1';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(pad.left,yy);ctx.lineTo(pad.left+plotW,yy);ctx.stroke();
+    ctx.fillStyle='#6b7c78';
+    ctx.fillText('第'+v,pad.left-6,yy+4);
+  });
+  // 折线
+  ctx.strokeStyle=teal;ctx.lineWidth=2.4;
+  ctx.beginPath();
+  entries.forEach((x2,i)=>{
+    const px=x(i),py=y(x2.slice.rank);
+    if(i===0)ctx.moveTo(px,py);else ctx.lineTo(px,py);
+  });
+  ctx.stroke();
+  // 点 + 名次标签
+  entries.forEach((x2,i)=>{
+    const px=x(i),py=y(x2.slice.rank);
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(px,py,3.8,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle=teal;ctx.lineWidth=2;ctx.stroke();
+    ctx.fillStyle='#33534d';ctx.font=small;ctx.textAlign='center';
+    ctx.fillText(`${x2.slice.rank}/${x2.slice.classCount}`,px,py-9);
+    // x 轴：上日期、下考试名
+    const raw=String(x2.exam.date||'');
+    ctx.fillStyle='#6b7c78';
+    ctx.fillText(raw.length>=10?raw.slice(5):raw,px,cssH-(o.large?26:22));
+    ctx.fillStyle='#93a5a1';
+    ctx.fillText(String(x2.exam.name||'').replace(/[-—]?\d{4}[-—]?\d{2}[-—]?\d{2}$/,'').slice(0,o.large?12:6),px,cssH-(o.large?9:8));
+  });
+  return {cssW,cssH};
+}
+function drawClassRankLine(canvas,series,opts){
+  if(!canvas)return false;
+  const entries=classRankEntries(series,(opts&&opts.limit)||CLASS_RANK_LINE_LIMIT);
+  if(!entries.length){canvas.style.display='none';return false;}
+  paintClassRankLine(canvas,entries,opts||{});
+  const wrap=canvas.parentElement,hint=wrap?wrap.parentElement.querySelector('.class-chart-swipe'):null;
+  if(hint)hint.style.display=(wrap.scrollWidth>wrap.clientWidth+2)?'':'none';
+  return true;
+}
 function downloadCanvasPng(canvas,filename){
   if(!canvas)return;
   try{
     const link=document.createElement('a');
-    link.download=filename||'三段构成.png';
+    link.download=filename||'班级分析.png';
     link.href=canvas.toDataURL('image/png');
     link.click();
     toast('图片已下载');
   }catch(err){toast('下载失败：'+((err&&err.message)||'未知错误'));}
 }
-// 点图看大图（大图里可以下载）
-function openClassChartLarge(){
+// 点图看大图（大图里可以下载）；kind: 'stack' 三段构成 / 'rank' 段排名折线
+function openClassChartLarge(kind){
   const cfg=classAnalysisConfig(state.settings);
   const cls=state.currentClass?normalizeClassName(state.currentClass):'';
-  const entries=classStackEntries(classAnalysisSeries(cls,cfg),CLASS_STACK_LIMIT);
-  if(!entries.length){toast('这些考试都没有段次，画不出三段构成');return;}
+  const isRank=kind==='rank';
+  const series=classAnalysisSeries(cls,cfg);
+  const entries=isRank?classRankEntries(series,CLASS_RANK_LINE_LIMIT):classStackEntries(series,CLASS_STACK_LIMIT);
+  if(!entries.length){toast(isRank?'至少要有两次多班对比的考试才能看段排名变化':'这些考试都没有段次，画不出三段构成');return;}
+  const title=isRank?`段排名变化 ${esc(cls)}`:`三段构成 ${esc(cls)}`;
   document.getElementById('classChartModal')?.remove();
   const modal=document.createElement('div');
   modal.id='classChartModal';modal.className='modal-backdrop';
   modal.innerHTML=`<div class="modal-card chart-modal-card" role="dialog" aria-modal="true">\
-<div class="modal-header"><h2>三段构成 ${esc(cls)}</h2><button type="button" class="icon-button modal-close" aria-label="关闭">×</button></div>\
+<div class="modal-header"><h2>${title}</h2><button type="button" class="icon-button modal-close" aria-label="关闭">×</button></div>\
 <div class="chart-large-wrap"><canvas id="classChartLarge"></canvas></div>\
 <div class="chart-actions">\
 <button type="button" class="primary" id="downloadClassChartLarge">下载图片</button>\
@@ -437,9 +534,11 @@ function openClassChartLarge(){
   modal.querySelector('.modal-close').onclick=close;
   modal.onclick=e=>{if(e.target===modal)close();};
   const canvas=modal.querySelector('#classChartLarge');
-  const width=Math.max(640,Math.min(1500,Math.max((window.innerWidth||0)-80,entries.length*CLASS_BAR_MIN_LARGE+80)));
-  paintClassStack(canvas,entries,cfg,{large:true,forceWidth:width});
-  modal.querySelector('#downloadClassChartLarge').onclick=()=>downloadCanvasPng(canvas,`三段构成-${cls||'班级'}-${localDate()}.png`);
+  const width=Math.max(640,Math.min(1500,Math.max((window.innerWidth||0)-80,isRank?640:entries.length*CLASS_BAR_MIN_LARGE+80)));
+  if(isRank)paintClassRankLine(canvas,entries,{large:true,forceWidth:width});
+  else paintClassStack(canvas,entries,cfg,{large:true,forceWidth:width});
+  const name=isRank?'段排名变化':'三段构成';
+  modal.querySelector('#downloadClassChartLarge').onclick=()=>downloadCanvasPng(canvas,`${name}-${cls||'班级'}-${localDate()}.png`);
   modal.querySelector('#closeClassChartLarge').onclick=close;
 }
 
@@ -466,11 +565,18 @@ function bindClassAnalysisActions(){
   });
   // 图：点一下看大图；两个按钮分别是“看大图”和“直接下载”
   const chart=$('#classTrend');
-  if(chart)chart.onclick=()=>openClassChartLarge();
+  if(chart)chart.onclick=()=>openClassChartLarge('stack');
   const viewChart=$('#viewClassChart');
-  if(viewChart)viewChart.onclick=()=>openClassChartLarge();
+  if(viewChart)viewChart.onclick=()=>openClassChartLarge('stack');
   const downloadChart=$('#downloadClassChart');
   if(downloadChart)downloadChart.onclick=()=>downloadCanvasPng($('#classTrend'),`三段构成-${state.currentClass||'班级'}-${localDate()}.png`);
+  // 段排名折线：同样的交互
+  const rankChart=$('#classRankLine');
+  if(rankChart)rankChart.onclick=()=>openClassChartLarge('rank');
+  const viewRank=$('#viewClassRankLine');
+  if(viewRank)viewRank.onclick=()=>openClassChartLarge('rank');
+  const downloadRank=$('#downloadClassRankLine');
+  if(downloadRank)downloadRank.onclick=()=>downloadCanvasPng($('#classRankLine'),`段排名变化-${state.currentClass||'班级'}-${localDate()}.png`);
   bindPanelHelp();
 }
 // 屏幕上图要重画：转屏/改窗口大小时按新宽度重新排柱子（宽了就出现横向滑动）
@@ -479,6 +585,8 @@ window.addEventListener('resize',()=>{
   if(!state.classAnalysisOpen||state.studentDetail||!classChartSeries.length)return;
   const canvas=$('#classTrend');
   if(canvas)drawClassStack(canvas,classChartSeries,classAnalysisConfig(state.settings));
+  const rankCanvas=$('#classRankLine');
+  if(rankCanvas)drawClassRankLine(rankCanvas,classChartSeries);
 });
 
 function openClassAnalysis(fromStudentId){
@@ -568,13 +676,20 @@ registerPanelHelp('class.stack','三段构成',
 <p><strong>看图操作</strong>：柱子比屏幕宽时可以直接左右滑动（会提示“左右滑动看图”）；<strong>点图</strong>或点“查看大图”可以放大看，大图里点“下载图片”存 PNG。柱子太密时用大图看更清楚。</p>`;
   });
 
-registerPanelHelp('class.flow','名单流动',
+registerPanelHelp('class.rankline','段排名变化',
+  () => `<p>这条线看的是<strong>本班整体的段内名次有没有往前走</strong>：每个点是一场考试，纵轴是“本班均分在所有班里排第几”，<strong>1 最好、数字越大越靠后</strong>，所以线往上走＝名次前进。</p>\
+<p>点旁边写的是“第M / N个班”，N 是那场考试有成绩的班级数——N 变了（比如某场少了几个班）时，光看名次容易误判，可以对照点数一起看。</p>\
+<p><strong>只画“多班对比”的场次</strong>：只导入了本班数据、或那一场库里只有一个班的，算不出段排名，不会出现在这条线上（所以点数可能少于 6 个）。点数是按时间从左到右排的，只取最近 ${CLASS_RANK_LINE_LIMIT} 个有排名的场次。</p>\
+<p><strong>看图操作</strong>：点图或点“查看大图”放大看，大图里点“下载图片”存 PNG；图宽超出屏幕时可以直接左右滑动。</p>`);
+
+registerPanelHelp('class.flow','学生分布详情',
   () => {
     const c=classAnalysisConfig(state.settings);
-    return `<p>比较“当前这一场”和它<strong>前一场</strong>，看谁进出两个临界区间：</p>\
-<p>· <strong>新进段前 ${c.topPercent}%</strong>：这一场才进前段的人（前一场不在）<br>\
-· <strong>掉出段前 ${c.topPercent}%</strong>：前一场在前段、这一场掉出来了<br>\
-· <strong>掉进段后 ${c.bottomPercent}%</strong>：这一场落到后段的人<br>\
-· <strong>脱离段后 ${c.bottomPercent}%</strong>：前一场在后段、这一场爬上来了</p>\
-<p>点名字可以直接进这位学生的详情页；想换看别的场次，就点上方的考试标签，默认是最近一场与其前一场。</p>`;
+    return `<p>这一块只列<strong>当前这一场</strong>的两组人：段前 ${c.topPercent}% 和段后 ${c.bottomPercent}%（段排位＝段次 ÷ 当场段人数）。</p>\
+<p><strong>三种标注</strong>：<br>\
+· <strong>白底</strong>＝这一场才进这一组（新进段前 / 掉进段后）；<br>\
+· <strong>彩框</strong>（段前青框、段后橙框）＝上一场也在同一组，稳定了两场；<br>\
+· <strong>反色</strong>（深底浅字）＝<strong>连续三场都在同一组</strong>，是最稳定的那批。</p>\
+<p>鼠标停在名字上／长按可以看到段次、段排位和属于哪一档；点名字可以直接进这位学生的详情页。</p>\
+<p>想换看别的场次，就点上方的考试标签；比较对象始终是“这一场”“前一场”“再前一场”。场次不够三场时，就只有前两档标注。</p>`;
   });
