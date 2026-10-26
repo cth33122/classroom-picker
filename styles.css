@@ -615,3 +615,12 @@ button.avatar:hover { border-color:var(--teal); }
 .exam-pick-row.is-active { border-color:var(--teal); background:#e4f3ef; }
 .exam-pick-name { display:flex; align-items:center; gap:6px; font-weight:600; }
 .exam-pick-tag { padding:0 7px; border-radius:999px; background:var(--teal); color:#fff; font-size:11px; font-weight:600; }
+/* 本班均分后面“和段均分的差”：正数绿、负数红 */
+.class-kpi-diff { margin-left:6px; font-size:13px; font-weight:700; }
+.class-kpi-diff.is-up { color:var(--teal-dark); }
+.class-kpi-diff.is-down { color:var(--danger); }
+
+/* 学生分布详情：组标题在上，名字换行排在下面（不再左右分布） */
+.class-flow-group { flex-direction:column; align-items:flex-start; gap:6px; }
+.class-flow-title { flex:0 0 auto; width:100%; }
+.class-flow-chips { width:100%; }

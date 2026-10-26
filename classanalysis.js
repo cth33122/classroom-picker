@@ -167,16 +167,16 @@ function renderClassAnalysis(){
   const seg=s.seg;
   const examLine=`${esc(focus.exam.name||'')}${focus.exam.date?`（${esc(focus.exam.date)}）`:''}`;
   const hasSegPeer=seg.classList.length>1;
+  // 本班均分后面跟“和段均分的差”，正数绿色、负数红色
+  const avgDiff=(s.avg!==null&&seg.avg!==null)?(s.avg-seg.avg):null;
+  const avgDiffHtml=avgDiff===null?''
+    :`<span class="class-kpi-diff ${avgDiff>=0?'is-up':'is-down'}">(${avgDiff>=0?'+':'-'}${Math.abs(avgDiff).toFixed(1)})</span>`;
   const kpis=[
-    {label:'本班人数',value:`${s.count} 人`,hint:''},
-    {label:'本班均分',value:classFix(s.avg),hint:`满分 ${classFix(focus.exam.totalScore)}`},
-    {label:'段均分',value:seg.avg===null?'—':classFix(seg.avg),hint:hasSegPeer?`全段 ${seg.count} 人`:'只有本班数据'},
+    {label:'本班均分',value:classFix(s.avg),html:avgDiffHtml,hint:`满分 ${classFix(focus.exam.totalScore)}`},
     {label:'班均分排名',value:(s.rank&&hasSegPeer)?`第 ${s.rank} / ${s.classCount}`:'—',hint:hasSegPeer?`共 ${s.classCount} 个班`:'缺全年段数据'},
-    {label:`段前 ${cfg.topPercent}%`,value:`${s.top.count} 人 · ${classPctText(s.top.share)}`,hint:''},
-    {label:`段后 ${cfg.bottomPercent}%`,value:`${s.bottom.count} 人 · ${classPctText(s.bottom.share)}`,hint:''},
   ];
   const kpiHtml=kpis.map(k=>`<div class="class-kpi"><span class="class-kpi-label">${esc(k.label)}</span>\
-<strong class="class-kpi-value">${esc(k.value)}</strong>${k.hint?`<span class="hint">${esc(k.hint)}</span>`:''}</div>`).join('');
+<strong class="class-kpi-value">${esc(k.value)}${k.html||''}</strong>${k.hint?`<span class="hint">${esc(k.hint)}</span>`:''}</div>`).join('');
   const barRow=(title,count,share,baseline,tone)=>{
     const width=share===null?0:Math.max(0,Math.min(1,share));
     const baseWidth=Math.max(0,Math.min(1,baseline));
@@ -311,8 +311,7 @@ title="段次 ${x.gradeRank??'—'}（段排位 ${classPctText(x.pct)}）· ${no
 <span class="class-flow-title">${esc(label)}<span class="hint">${list.length} 人</span></span>\
 ${list.length?`<span class="class-flow-chips">${chips}</span>`:'<span class="hint">这一场没有</span>'}</div>`;
   };
-  const range=prev?`${esc(prev.exam.name||prev.exam.date||'')} → ${esc(current.exam.name||current.exam.date||'')}`:'';
-  return `<div class="panel"><h3 class="with-help">学生分布详情：${range} ${panelHelpBtn('class.flow','学生分布详情的说明')}</h3>\
+  return `<div class="panel"><h3 class="with-help">学生分布详情 ${panelHelpBtn('class.flow','学生分布详情的说明')}</h3>\
 ${group(`段前 ${cfg.topPercent}%`,current.slice.top.students,prevTop,prev2Top,'is-top')}\
 ${group(`段后 ${cfg.bottomPercent}%`,current.slice.bottom.students,prevBottom,prev2Bottom,'is-bottom')}\
 </div>`;
@@ -649,11 +648,9 @@ registerPanelHelp('class.latest','本场概览',
   () => {
     const c=classAnalysisConfig(state.settings);
     return `<p>这一块是“某一场考试”的本班与段对比，默认最近一场；点标题上方那排考试标签可以切到别的场次。</p>\
-<p><strong>本班人数</strong>：这场考试有成绩的本班人数（缺考的不算）。<br>\
-<strong>本班均分 / 段均分</strong>：全班、全段有效成绩的平均分（满分见卡片下方小字）。<br>\
-<strong>班均分排名</strong>：把段里每个班的均分从高到低排，本班是第几名；均分相同的算并列，分母是“这场考试有成绩的班级数”。<br>\
-<strong>段前 ${c.topPercent}% / 段后 ${c.bottomPercent}%</strong>：本班多少人在段前/段后区间，占本班有段次人数的百分比。</p>\
-<p><strong>三条横条</strong>：实心条是本班实际占比，细竖线是“段里的自然比例”（段前 ${c.topPercent}% / 中间 ${Math.max(0,100-c.topPercent-c.bottomPercent)}% / 段后 ${c.bottomPercent}%）。条比竖线长，就说明本班这一类学生比全段平均多。</p>\
+<p><strong>本班均分</strong>：全班有效成绩的平均分（满分见卡片下方小字）；括号里是<strong>和全段平均分的差</strong>——正数（绿）说明比段平均高，负数（红）说明比段平均低。<br>\
+<strong>班均分排名</strong>：把段里每个班的均分从高到低排，本班是第几名；均分相同的算并列，分母是“这场考试有成绩的班级数”。</p>\
+<p><strong>三条横条</strong>：实心条是本班实际占比，细竖线是“段里的自然比例”（段前 ${c.topPercent}% / 中间 ${Math.max(0,100-c.topPercent-c.bottomPercent)}% / 段后 ${c.bottomPercent}%）。条比竖线长，就说明本班这一类学生比全段平均多；具体人数与占比写在每条右边。</p>\
 <p>有成绩但没有段次的学生（缺考或缺列）不计入三段占比，会在下方单独提示人数。</p>`;
   });
 
