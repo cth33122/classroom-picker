@@ -2,6 +2,8 @@
 const ALGORITHM_DEFAULTS = {
   configVersion: 5, candidateCount: 4,
   recentDecay: 0.58, recoveryPerCall: 0.12, focusBoost: 1.65, basisExamCount: 3, historyRule: 'twoMonths', sameDayRepeat: 'block', lowScorePercentile: 0.60, zeroRecentBoost: 1.5, shortcutClasses: [],
+  // 班级分析的分段参数（百分数：15 = 段前 15%），阈值在“设置 → 班级分析”或班级分析页顶部改
+  classTopPct: 15, classBottomPct: 20,
   difficulty: {
     1: { minPercentile: 0.60, maxPercentile: 1.00 },
     2: { minPercentile: 0.25, maxPercentile: 0.75 },
@@ -54,6 +56,13 @@ function mergeConfig(saved) {
   next.shortcutClasses = Array.isArray(next.shortcutClasses) ? next.shortcutClasses : [];
   next.historyRule = ['calls20','calls30','calls50','week','twoWeeks','month','twoMonths','threeMonths','halfYear','all'].includes(String(next.historyRule)) ? String(next.historyRule) : 'twoMonths';
   next.sameDayRepeat = String(next.sameDayRepeat) === 'allow' ? 'allow' : 'block';
+  // 班级分析：段前/段后百分比各自 2–50，且两者之和不超过 90（中间段要留一点）
+  next.classTopPct = Math.max(2, Math.min(50, numeric(next.classTopPct, ALGORITHM_DEFAULTS.classTopPct)));
+  next.classBottomPct = Math.max(2, Math.min(50, numeric(next.classBottomPct, ALGORITHM_DEFAULTS.classBottomPct)));
+  if (next.classTopPct + next.classBottomPct > 90) {
+    next.classTopPct = Math.min(next.classTopPct, 50);
+    next.classBottomPct = Math.min(next.classBottomPct, 90 - next.classTopPct);
+  }
   return next;
 }
 function recentHistoryEntries(history, studentId, config) {

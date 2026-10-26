@@ -45,6 +45,7 @@ ${noteBadge(s)}\
 <div class="detail-actions">\
 <button class="secondary detail-focus${s.focus?' on':''}" id="detailFocusBtn">${s.focus?'已关注':'未关注'}</button>\
 <button class="secondary detail-nocall${s.noCall?' on':''}" id="detailNoCallBtn">${s.noCall?'不参与点名':'参与点名'}</button>\
+<button class="secondary" id="detailClassAnalysisBtn" title="看这个班的均分、段内排名和三段占比">班级分析</button>\
 </div>\
 <div class="detail-status">${gradeStatusChipsFor(s)}</div>\
 </div>\
@@ -109,7 +110,7 @@ ${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc
   $$('#view-students [data-avatar-edit]').forEach(b=>b.onclick=openAvatar);
   // 状态标签：点一下跳到成绩分析，并滚到这位学生的条目
   $$('#view-students [data-grade-status-jump]').forEach(b=>b.onclick=()=>openGradeAnalysisForStudent(b.dataset.gradeStatusJump));
-  $('#detailFocusBtn').onclick=async()=>{s.focus=!s.focus;await DB.put(s);renderStudentDetail(id);toast(s.focus?`已把 ${s.name} 设为关注`:`已取消 ${s.name} 的关注`);};$('#detailNoCallBtn').onclick=async()=>{s.noCall=!s.noCall;await DB.put(s);refreshCandidatesAfterSettings();renderStudentDetail(id);toast(s.noCall?`已把 ${s.name} 标记为不参与点名`:`已恢复 ${s.name} 的候选资格`);};$('#editPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openNoteBtn').onclick=()=>openNoteEditor(id);const examToggleBtn=$('#toggleExamList');if(examToggleBtn)examToggleBtn.onclick=()=>{state.studentExamExpand=!state.studentExamExpand;renderStudentDetail(id);};drawScoreChart(s,trendRecords);$('#toggleScoreMode').onclick=()=>{state.scoreChartMode=scoreChartMode()==='raw'?'rate':'raw';renderStudentDetail(id);};$('#viewScoreChart').onclick=()=>openScoreChart(records);$('#downloadScoreChartInline').onclick=()=>{const canvas=$('#scoreChart');const link=document.createElement('a');link.download='成绩趋势图.png';link.href=canvas.toDataURL('image/png');link.click();};
+  $('#detailFocusBtn').onclick=async()=>{s.focus=!s.focus;await DB.put(s);renderStudentDetail(id);toast(s.focus?`已把 ${s.name} 设为关注`:`已取消 ${s.name} 的关注`);};$('#detailClassAnalysisBtn').onclick=()=>openClassAnalysis(id);$('#detailNoCallBtn').onclick=async()=>{s.noCall=!s.noCall;await DB.put(s);refreshCandidatesAfterSettings();renderStudentDetail(id);toast(s.noCall?`已把 ${s.name} 标记为不参与点名`:`已恢复 ${s.name} 的候选资格`);};$('#editPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openNoteBtn').onclick=()=>openNoteEditor(id);const examToggleBtn=$('#toggleExamList');if(examToggleBtn)examToggleBtn.onclick=()=>{state.studentExamExpand=!state.studentExamExpand;renderStudentDetail(id);};drawScoreChart(s,trendRecords);$('#toggleScoreMode').onclick=()=>{state.scoreChartMode=scoreChartMode()==='raw'?'rate':'raw';renderStudentDetail(id);};$('#viewScoreChart').onclick=()=>openScoreChart(records);$('#downloadScoreChartInline').onclick=()=>{const canvas=$('#scoreChart');const link=document.createElement('a');link.download='成绩趋势图.png';link.href=canvas.toDataURL('image/png');link.click();};
 }
 
 // 打开某个学生的详情页（并切到“学生”标签，供点名页点座位、统计页点条目调用）
@@ -326,6 +327,7 @@ function toggleStudentHeader(key){const prefix=key;state.studentSort=state.stude
 function renderStudents(){
   if(state.studentDetail){renderStudentDetail(state.studentDetail);return;}
   if(state.gradeAnalysisOpen){renderGradeAnalysis();return;}
+  if(state.classAnalysisOpen){renderClassAnalysis();return;}
   const filtered=state.students.filter(s=>!state.currentClass||s.className===state.currentClass),exams=orderedExams();
   // 不再提供“选哪场考试”：一律看最近一场；上一场只用来算“位次变化”列和排序
   const latestExam=exams[0]||null;
@@ -343,7 +345,10 @@ function renderStudents(){
 <div class="panel">\
 <div class="student-section-head">\
 <div class="student-section-title">学生资料 <span class="badge">${filtered.length}人</span></div>\
+<div class="actions student-head-actions">\
 <button type="button" class="secondary" id="gradeAnalysisBtn" title="按最近几次成绩看谁持续下降、持续偏低、正在改善">成绩分析</button>\
+<button type="button" class="secondary" id="classAnalysisBtn" title="本班均分、班均分在段里的排名、段前/段后三段占比与历次变化">班级分析</button>\
+</div>\
 </div>\
 <div class="table-header student-table-header">\
 <button data-student-sort="score">当前成绩${sortArrow(state.studentSort.startsWith('score'),state.studentSort.endsWith('asc'))}</button>\
@@ -356,6 +361,7 @@ function renderStudents(){
   $('#studentSearch').oninput=e=>{$('#studentList').innerHTML=studentRows(filtered.filter(s=>String(s.name||'').includes(e.target.value.trim())));bindStudentActions();};
     $$('[data-student-sort]').forEach(b=>b.onclick=()=>toggleStudentHeader(b.dataset.studentSort));
     $('#gradeAnalysisBtn').onclick=()=>openGradeAnalysis();
+    $('#classAnalysisBtn').onclick=()=>openClassAnalysis();
     bindStudentActions();
     bindClassChangeBanner();      // 本班班级变动提示条：核对无误 / 撤销这批变动
     

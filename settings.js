@@ -232,6 +232,20 @@ function renderSettings(){  const s=state.settings,historyOptions=HISTORY_RULE_O
 <p class="hint">以上都用“段排位百分位”（段排名÷当场段人数，0 最好、1 最差）。改完到“学生”页点“成绩分析”即可看到结果。</p>\
 </div>\
 <div class="panel">\
+<h2 class="with-help">班级分析 ${panelHelpBtn('class.analysis','班级分析的说明')}</h2>\
+<div class="grid three">\
+<div class="field">\
+<label>段前百分比（%）</label>\
+<input data-setting="classTopPct" type="number" min="2" max="50" step="1" value="${s.classTopPct||CLASS_ANALYSIS_DEFAULTS.topPct}">\
+</div>\
+<div class="field">\
+<label>段后百分比（%）</label>\
+<input data-setting="classBottomPct" type="number" min="2" max="50" step="1" value="${s.classBottomPct||CLASS_ANALYSIS_DEFAULTS.bottomPct}">\
+</div>\
+</div>\
+<p class="hint">段次落在前 ${s.classTopPct||CLASS_ANALYSIS_DEFAULTS.topPct}% 的算“段前”，落在后 ${s.classBottomPct||CLASS_ANALYSIS_DEFAULTS.bottomPct}% 的算“段后”。改完到“学生”页点“班级分析”即可看到结果，也可以直接在那个页面顶部改。</p>\
+</div>\
+<div class="panel">\
 <h2>快捷班级</h2>\
 <div class="shortcut-editor">\
 <input id="shortcutClasses" value="${esc((s.shortcutClasses||[]).join(','))}" placeholder="01,02,10">\

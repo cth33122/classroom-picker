@@ -529,3 +529,55 @@ button.avatar:hover { border-color:var(--teal); }
 .candidate-single { box-shadow:inset 0 0 0 1px var(--mint); }
 .candidate-single .avatar { box-shadow:0 0 0 3px var(--mint); }
 
+
+/* ===== 班级分析（学生页二级页面） ===== */
+.student-head-actions { margin-top:0; gap:6px; flex:0 0 auto; }
+.student-head-actions > * { flex:0 0 auto; min-width:0; }
+.class-param-row { display:flex; align-items:flex-end; gap:10px; flex-wrap:wrap; }
+.class-param-row .field { flex:0 0 auto; margin:0; }
+.class-param-input { display:flex; align-items:center; gap:4px; }
+.class-param-input input { width:76px; text-align:center; }
+.class-param-row .primary { flex:0 0 auto; min-width:0; padding:8px 16px; }
+.class-kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:8px; margin:4px 0 10px; }
+.class-kpi { display:flex; flex-direction:column; gap:2px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:var(--paper); }
+.class-kpi-label { font-size:12px; color:var(--muted); }
+.class-kpi-value { font-size:19px; line-height:1.2; }
+.class-bars { display:flex; flex-direction:column; gap:8px; margin:6px 0 4px; }
+.class-bar-row { display:flex; align-items:center; gap:8px; }
+.class-bar-name { flex:0 0 92px; font-size:13px; font-weight:600; }
+.class-bar-track { position:relative; flex:1 1 auto; height:14px; border-radius:999px; background:#eef2f1; overflow:hidden; }
+.class-bar-fill { display:block; height:100%; border-radius:999px; transition:width .25s ease; }
+.class-bar-fill.is-top { background:linear-gradient(90deg,#0f766e,#34b3a6); }
+.class-bar-fill.is-mid { background:#c9d6d3; }
+.class-bar-fill.is-bottom { background:linear-gradient(90deg,#f97316,#fbbf24); }
+.class-bar-base { position:absolute; top:-2px; bottom:-2px; width:0; border-left:2px dotted #33534d; opacity:.75; }
+.class-bar-value { flex:0 0 auto; font-size:13px; font-variant-numeric:tabular-nums; }
+.class-table-wrap { width:100%; overflow-x:auto; }
+.class-table { width:100%; border-collapse:collapse; font-size:13px; }
+.class-table th, .class-table td { padding:7px 8px; border-bottom:1px solid var(--line); text-align:left; white-space:nowrap; }
+.class-table th { font-weight:600; color:var(--muted); background:var(--paper); }
+.class-table td:not(:first-child) { font-variant-numeric:tabular-nums; }
+
+
+.class-flow-group { display:flex; align-items:flex-start; gap:8px; padding:7px 0; border-bottom:1px solid var(--line); }
+.class-flow-group:last-of-type { border-bottom:0; }
+.class-flow-title { flex:0 0 132px; font-size:13px; font-weight:600; display:flex; gap:6px; align-items:baseline; }
+.class-flow-chips { display:flex; flex-wrap:wrap; gap:6px; }
+.class-flow-name { border:1px solid var(--line); border-radius:999px; background:#fff; padding:3px 10px; font-size:13px; color:var(--ink); }
+.class-flow-name:hover { border-color:var(--teal); color:var(--teal); }
+/* 三段构成的图例（柱状图上方） */
+.class-legend { display:flex; align-items:center; flex-wrap:wrap; gap:12px; margin:2px 0 6px; font-size:13px; }
+.class-legend-item { display:inline-flex; align-items:center; gap:5px; }
+.class-legend-item i { width:12px; height:12px; border-radius:3px; display:inline-block; }
+.class-legend-item i.is-top { background:#0f9c8f; }
+.class-legend-item i.is-mid { background:#c9d7d4; }
+.class-legend-item i.is-bottom { background:#f0a02a; }
+.class-legend .hint { margin-left:auto; }/* 三段构成图：容器可横向滑动（柱子比屏幕宽时不裁切），点图看大图 */
+.class-chart-scroll { width:100%; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; border:1px solid var(--line); border-radius:8px; background:#fff; }
+.class-chart-scroll canvas { display:block; cursor:zoom-in; }
+.class-chart-swipe { margin:6px 0 0; font-size:12px; }
+.class-chart-actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+.class-chart-actions > button { flex:0 0 auto; min-height:0; padding:6px 14px; font-size:13px; }
+/* 班级分析：大图弹窗（比普通弹窗宽，图可以横向滚动看全） */
+.chart-modal-card { width:min(1100px,100%); }
+.chart-modal-card .chart-large-wrap { max-height:calc(100vh - 200px); }
