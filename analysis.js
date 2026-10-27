@@ -1,18 +1,23 @@
-// 学生成绩状态监测：把“单次异常 / 持续偏低 / 持续下降 / 正在改善”算出来并渲染成学生页里的分析页。
+// 学生成绩状态监测：主状态只有 下降 / 持续偏低 / 进步 / 平稳 / 数据不足，另外两个“本次考试”的附加标签 陡降 / 陡升。
 // 判定基准统一用“段排位百分位” p = 段排名 / 当场段人数（0 最好、1 最差，越大越差），
 // 这样跨考试（满分不同）、跨班（人数不同）都能比；得分率只用来展示。
+// 口径：只看最近 3–5 场（默认 4 场），全程直接用每个点算——首末差、平均每场变化、最新一步、
+// 相对趋势线的残差、相邻差分同向次数，不用中位数（中位数会扔掉一头一尾的信息）。
+// 老师最关心的两件事排在最前：有下降趋势的、持续偏低的。
 // 这里全是纯计算 + 一处渲染，不写入任何数据。
 
-const GRADE_STATUS_DEFAULTS={lowPct:0.80,anomaly:0.25,dropWindow:0.15,improveWindow:0.10,minExams:3};
+const GRADE_STATUS_DEFAULTS={lowPct:0.80,window:4,step:0.05,jump:0.12,stepMin:0.02};
 const GRADE_STATUS_META={
-  drop:{label:'持续下降',level:'关注',tone:'danger',hint:'前后两个三次窗口的中位数明显变差，而且最近三次还在往下走'},
-  low:{label:'持续偏低',level:'关注',tone:'danger',hint:'最近三次里至少两次落在段排位后 20%'},
-  anomaly:{label:'单次异常',level:'观察',tone:'warn',hint:'本次明显低于个人常态，但没有持续下降的证据'},
-  improve:{label:'正在改善',level:'继续观察',tone:'good',hint:'最近三次的中位数在回升，趋势转好'},
-  stable:{label:'稳定',level:'—',tone:'muted',hint:'没有命中上面任何一条'},
-  short:{label:'数据不足',level:'—',tone:'muted',hint:'有效成绩不足以判断'},
+  drop:{label:'下降',level:'关注',tone:'danger',hint:'最近几场整体在往下走（看每场变化和同向次数，允许中间有反弹）'},
+  low:{label:'持续偏低',level:'关注',tone:'danger',hint:'最近三次里至少两次落在段排位后百分之二十'},
+  improve:{label:'进步',level:'—',tone:'good',hint:'最近几场整体在往上走'},
+  stable:{label:'平稳',level:'—',tone:'muted',hint:'最近几场没有明显趋势'},
+  short:{label:'数据不足',level:'—',tone:'muted',hint:'有效成绩不足 2 场，判不出趋势'},
+  steepFall:{label:'陡降',level:'观察',tone:'warn',hint:'最近这一次比上一次明显掉了（或明显低于趋势线），属于“本次考试”的信号'},
+  steepRise:{label:'陡升',level:'—',tone:'good',hint:'最近这一次比上一次明显进步了，属于“本次考试”的信号'},
+  high:{label:'持续高分',level:'—',tone:'good',hint:'最近三次里至少两次落在段排位前百分之二十（和持续偏低对称）'},
 };
-const GRADE_STATUS_ORDER=['drop','low','anomaly','improve','stable','short'];
+const GRADE_STATUS_ORDER=['low','drop','improve','stable','short'];
 
 function gradeStatusConfig(saved){
   const s=saved||{};
@@ -23,10 +28,10 @@ function gradeStatusConfig(saved){
   };
   return {
     lowPct:num(s.gradeLowPct,GRADE_STATUS_DEFAULTS.lowPct,0.5,0.95),
-    anomaly:num(s.gradeAnomaly,GRADE_STATUS_DEFAULTS.anomaly,0.05,0.60),
-    dropWindow:num(s.gradeDropWindow,GRADE_STATUS_DEFAULTS.dropWindow,0.02,0.60),
-    improveWindow:num(s.gradeImproveWindow,GRADE_STATUS_DEFAULTS.improveWindow,0.02,0.60),
-    minExams:Math.round(num(s.gradeMinExams,GRADE_STATUS_DEFAULTS.minExams,2,10)),
+    window:Math.round(num(s.gradeWindow,GRADE_STATUS_DEFAULTS.window,3,5)),
+    step:num(s.gradeStep,GRADE_STATUS_DEFAULTS.step,0.01,0.40),
+    jump:num(s.gradeJump,GRADE_STATUS_DEFAULTS.jump,0.02,0.60),
+    stepMin:GRADE_STATUS_DEFAULTS.stepMin,
   };
 }
 
@@ -86,61 +91,77 @@ function buildGradeSeries(student){
   });
   return out;
 }
-function gradeMedian(list){
-  const arr=(list||[]).filter(v=>Number.isFinite(v)).slice().sort((a,b)=>a-b);
-  if(!arr.length)return null;
-  const mid=Math.floor(arr.length/2);
-  return arr.length%2?arr[mid]:(arr[mid-1]+arr[mid])/2;
-}
-// 最小二乘斜率（x = 0,1,2…）
-function gradeSlope(list){
+// 最小二乘直线拟合（x = 0,1,2…）：返回斜率与截距，用来看“趋势线上本该在哪”
+function gradeLineFit(list){
   const arr=(list||[]).filter(v=>Number.isFinite(v));
-  if(arr.length<2)return null;
+  if(arr.length<2)return {slope:null,intercept:null};
   const n=arr.length,mx=(n-1)/2,my=arr.reduce((a,b)=>a+b,0)/n;
   let num=0,den=0;
   arr.forEach((y,i)=>{num+=(i-mx)*(y-my);den+=(i-mx)*(i-mx);});
-  return den?num/den:null;
+  const slope=den?num/den:0;
+  return {slope,intercept:my-slope*mx};
 }
 
 // 判定一个学生的状态：返回 {primary, tags, series, evidence}
-// 优先级：持续下降 > 持续偏低 > 单次异常 > 正在改善 > 稳定
+// v240 口径（不再用中位数，只看最近 window 场）：
+//   Δ = 窗口首末差；每场 = Δ ÷ (场次−1)；最新步 = 最后一场 − 上一场；残差 = 最后一场 − 趋势线在该点的值
+//   下降 = 每场 ≥ step 且相邻差分里至少 2 次在变差（允许中间反弹），或这次陡降
+//   持续偏低 = 最近三次里至少 2 次落在后 lowPct（单独成首栏）；持续高分是对称的正面标签
+//   进步 = 上面两条朝好方向的镜像
+//   陡降/陡升 = 最新一步（或相对趋势线的残差）≥ jump —— 只标记“本次考试”的突变
 function detectGradeStatus(student,cfg){
   const c=cfg||gradeStatusConfig(state.settings);
   const series=buildGradeSeries(student);
   const valid=series.filter(x=>!x.missing&&x.segPct!==null);
-  const evidence={count:valid.length,need:c.minExams,last3:[],prev:[],last3Median:null,prevMedian:null,slope:null,currentPct:null,historyMedian:null,lowHits:0,examName:'',examDate:''};
-  if(valid.length<c.minExams)return {primary:'short',tags:[],series,evidence};
-  const last3=valid.slice(-3),prev=valid.slice(-6,-3);
-  const pLast3=last3.map(x=>x.segPct),pPrev=prev.map(x=>x.segPct);
+  const win=valid.slice(-c.window);
+  const ps=win.map(x=>x.segPct);
   const current=valid[valid.length-1];
-  evidence.last3=pLast3.slice();
-  evidence.prev=pPrev.slice();
-  evidence.last3Median=gradeMedian(pLast3);
-  evidence.prevMedian=pPrev.length?gradeMedian(pPrev):null;
-  evidence.slope=gradeSlope(pLast3);
-  evidence.currentPct=pLast3.length?pLast3[pLast3.length-1]:null;
-  evidence.examName=current?current.name:'';
-  evidence.examDate=current?current.date:'';
-  const history=valid.slice(0,-1);
-  evidence.historyMedian=history.length?gradeMedian(history.map(x=>x.segPct)):null;
-  const lowHits=pLast3.filter(p=>p>=c.lowPct).length;
-  evidence.lowHits=lowHits;
-  const hits=[];
-  const hasWindows=evidence.prevMedian!==null&&evidence.last3Median!==null&&pPrev.length>=2&&pLast3.length>=2;
-  const dropFits=hasWindows&&(evidence.last3Median-evidence.prevMedian)>=c.dropWindow&&evidence.slope!==null&&evidence.slope>0;
-  if(dropFits)hits.push('drop');
-  if(lowHits>=2)hits.push('low');
-  const anomalyFits=!dropFits&&history.length>=3&&evidence.historyMedian!==null&&evidence.currentPct!==null
-    &&(evidence.currentPct-evidence.historyMedian)>=c.anomaly;
-  if(anomalyFits)hits.push('anomaly');
-  const improveFits=!dropFits&&hasWindows&&(evidence.prevMedian-evidence.last3Median)>=c.improveWindow&&evidence.slope!==null&&evidence.slope<0;
-  if(improveFits)hits.push('improve');
-  const primary=hits.length?hits[0]:'stable';
-  const tags=hits.filter(x=>x!==primary);
-  return {primary,tags,series,evidence};
+  const evidence={count:valid.length,window:c.window,ps,delta:null,perExam:null,lastStep:null,slope:null,resid:null,
+    worse:0,better:0,longDiff:null,lowHits:0,highHits:0,score:0,examName:current?(current.name||''):'',examDate:current?(current.date||''):''};
+  if(ps.length<2)return {primary:'short',tags:[],series,evidence};
+  const n=ps.length;
+  const fit=gradeLineFit(ps);
+  evidence.slope=fit.slope;
+  evidence.delta=ps[n-1]-ps[0];
+  evidence.perExam=evidence.delta/(n-1);
+  evidence.lastStep=ps[n-1]-ps[n-2];
+  evidence.resid=fit.intercept===null?0:ps[n-1]-(fit.intercept+fit.slope*(n-1));
+  const diffs=ps.slice(1).map((v,i)=>v-ps[i]);
+  evidence.worse=diffs.filter(d=>d>=c.stepMin).length;
+  evidence.better=diffs.filter(d=>-d>=c.stepMin).length;
+  evidence.longDiff=ps[n-1]-valid[0].segPct;
+  const last3=ps.slice(-3);
+  evidence.lowHits=last3.filter(p=>p>=c.lowPct).length;
+  evidence.highHits=last3.filter(p=>p<=1-c.lowPct).length;
+  const falling=evidence.perExam>=c.step&&evidence.worse>=2;
+  const rising=-evidence.perExam>=c.step&&evidence.better>=2;
+  const plunge=evidence.lastStep>=c.jump||evidence.resid>=c.jump;
+  const surge=-evidence.lastStep>=c.jump||-evidence.resid>=c.jump;
+  const lowHits=evidence.lowHits>=2;
+  // 主状态优先级：下降 > 持续偏低 > 进步 > 平稳（老师最关心的两件事排前面）
+  let primary='stable';
+  if(falling&&!rising)primary='drop';
+  else if(rising&&!falling)primary='improve';
+  else if(falling&&rising)primary=evidence.delta>0?'drop':'improve';
+  else if(plunge)primary='drop';
+  else if(surge)primary='improve';
+  // 持续偏低统一进“首栏”：不管原来判定成什么方向，方向改成标签带着走
+  const beforeLow=primary;
+  if(lowHits)primary='low';
+  // 附加标签：本次考试的突变 + 与偏低对称的持续高分
+  const tags=[];
+  if(plunge)tags.push('steepFall');
+  if(surge)tags.push('steepRise');
+  if(evidence.highHits>=2)tags.push('high');
+  if(lowHits&&beforeLow==='drop')tags.push('drop');
+  if(lowHits&&beforeLow==='improve')tags.push('improve');
+  const dirWeight=primary==='drop'?evidence.worse:primary==='improve'?evidence.better:0;
+  evidence.score=Math.round(Math.abs(evidence.delta)*100+Math.abs(evidence.resid)*60+dirWeight*3);
+  evidence.currentPct=ps[n-1];        // 首栏（持续偏低）按“现在越靠后越前”排序用
+  return {primary,tags:[...new Set(tags)],series,evidence};
 }
 
-// 本班全部学生的分析行，按状态优先级 + 严重程度排序
+// 本班全部学生的分析行：先按主状态（持续偏低→下降→进步→平稳→数据不足），组内按严重度从高到低
 function gradeAnalysisRows(cfg){
   const c=cfg||gradeStatusConfig(state.settings);
   clearGradeAnalysisCache();
@@ -152,8 +173,12 @@ function gradeAnalysisRows(cfg){
   rows.sort((a,b)=>{
     const pa=GRADE_STATUS_ORDER.indexOf(a.primary),pb=GRADE_STATUS_ORDER.indexOf(b.primary);
     if(pa!==pb)return pa-pb;
-    const sa=a.evidence.last3Median===null?-1:a.evidence.last3Median;
-    const sb=b.evidence.last3Median===null?-1:b.evidence.last3Median;
+    // 首栏（持续偏低）：现在段排位越靠后越前，最该先看的排最上面
+    if(a.primary==='low'&&b.primary==='low'){
+      const ca=Number(a.evidence.currentPct),cb=Number(b.evidence.currentPct);
+      if(Number.isFinite(ca)&&Number.isFinite(cb)&&ca!==cb)return cb-ca;
+    }
+    const sa=Number(a.evidence.score)||0,sb=Number(b.evidence.score)||0;
     if(sa!==sb)return sb-sa;
     return String(a.student.name||'').localeCompare(String(b.student.name||''),'zh-CN');
   });
@@ -207,22 +232,38 @@ function gradeEvidenceText(row,config){
   const e=row.evidence;
   const bits=[];
   if(e.examName)bits.push(`${esc(e.examName)}${e.examDate?'（'+esc(e.examDate)+'）':''}`);
-  if(e.last3.length)bits.push('最近三次段排位 '+e.last3.map(v=>gradePctText(v)).join(' · '));
-  if(e.prevMedian!==null)bits.push(`前三次中位 ${gradePctText(e.prevMedian)} → 最近 ${gradePctText(e.last3Median)}`);
-  else if(e.historyMedian!==null)bits.push(`历史中位 ${gradePctText(e.historyMedian)} → 本次 ${gradePctText(e.currentPct)}`);
-  if(e.slope!==null)bits.push('趋势 '+(e.slope>0.004?'变差':e.slope<-0.004?'转好':'持平')+'（'+(e.slope>=0?'+':'')+e.slope.toFixed(3)+'）');
+  if(e.ps&&e.ps.length){
+    bits.push(`最近 ${e.ps.length} 场段排位 ${e.ps.map(v=>gradePctText(v)).join(' → ')}`);
+    bits.push(`Δ ${e.delta>=0?'+':''}${Math.round(e.delta*100)}pp（每场 ${e.perExam>=0?'+':''}${(e.perExam*100).toFixed(1)}）`);
+    bits.push(`最新一步 ${e.lastStep>=0?'+':''}${Math.round(e.lastStep*100)}pp`);
+    if(Number.isFinite(e.resid))bits.push(`偏离趋势 ${e.resid>=0?'+':''}${Math.round(e.resid*100)}pp`);
+    bits.push(`变差 ${e.worse} 次 · 变好 ${e.better} 次`);
+    if(Number.isFinite(e.range))bits.push(`极差 ${Math.round(e.range*100)}pp · 反转 ${e.reversals||0} 次`);
+    if(e.longDiff!==null&&Number.isFinite(e.longDiff))bits.push(`长期 ${e.longDiff>=0?'+':''}${Math.round(e.longDiff*100)}pp`);
+  }
   if(e.lowHits)bits.push(`后 ${Math.round((1-config.lowPct)*100)}% 命中 ${e.lowHits}/3`);
-  if(row.primary==='short')bits.push(`有效成绩 ${e.count} 场（判定需 ${e.need} 场）`);
+  if(row.primary==='short')bits.push(`有效成绩 ${e.count} 场（至少要 2 场）`);
   return bits.join(' ｜ ');
 }
 function gradeRowHtml(row,config){
   const s=row.student;
   const name=esc(s.displayName||s.name||'');
   const tags=row.tags.map(k=>gradeChip(k)).join('');
+  const score=Number(row.evidence.score)||0;
+  const width=Math.max(6,Math.min(100,score));
+  // 小条 = 这段时间的趋势方向：红＝在退步（段排位变大），绿＝在进步（段排位变小），长度＝变化幅度。
+  // 它和左边的状态标签是两件事：比如“持续偏低 + 绿条”＝底子弱但正在往回爬。
+  // 数据不足（只有 1 场）没有趋势，就不画条。
+  const delta=Number(row.evidence.delta);
+  const worse=!Number.isFinite(delta)||delta>=0;
+  const tone=worse?'is-down':'is-up';
+  const showBar=row.primary!=='short';
+  const sevTitle=showBar?`趋势${worse?'退步':'进步'}：幅度 ${score}（越长变化越大）`:'有效成绩不足，没有趋势可看';
   return `<button type="button" class="grade-row" data-grade-student="${esc(s.id)}">\
 <span class="grade-row-main">\
 ${avatarHtml(s,{size:34})}\
 <span class="grade-row-who"><strong class="${focusNameClass(s)}">${name}</strong>${gradeChip(row.primary)}${tags}</span>\
+${showBar?`<span class="grade-sev ${tone}" title="${sevTitle}"><i style="width:${width}%"></i></span>`:''}\
 </span>\
 <span class="grade-row-evidence hint">${gradeEvidenceText(row,config)}</span>\
 </button>`;
@@ -325,10 +366,19 @@ function closeGradeAnalysis(){
 // 成绩分析页的说明
 registerPanelHelp('grade.analysis','成绩分析',
   () => {const c=gradeStatusConfig(state.settings);return `<p><strong>判定基准</strong>：段排位百分位 = 当场段排名 ÷ 当场段人数（0 最好、1 最差）。用它比是因为各场满分不同、各班人数也不同，原始分和名次都没法直接比。</p>\
-<p><strong>三种判定</strong>（阈值可在设置页“成绩分析”里改）：</p>\
-<p>· <strong>持续下降</strong>：最近 3 次段排位中位数比前 3 次差 ≥ ${Math.round(c.dropWindow*100)} 个百分点，且最近 3 次趋势在变差 → 关注。<br>\
-· <strong>持续偏低</strong>：最近 3 次里至少 2 次落在后 ${Math.round((1-c.lowPct)*100)}%（段排位 ≥ ${gradePctText(c.lowPct)}）→ 关注。<br>\
-· <strong>单次异常</strong>：本次比之前历史中位数差 ≥ ${Math.round(c.anomaly*100)} 个百分点，且不属于“持续下降” → 观察。<br>\
-· <strong>正在改善</strong>：最近 3 次中位数比前 3 次好 ≥ ${Math.round(c.improveWindow*100)} 个百分点，且趋势在变好 → 继续观察。</p>\
-<p>缺考不计入计算（但会标注）；有效成绩少于 ${c.minExams} 场的学生归到“数据不足”。一个学生可能同时命中多条，列表里会同时显示主状态与副标签。</p>\
-<p><strong>怎么用这张表</strong>：默认按状态分组列出全班（持续下降在最前）；上方的状态标签横排一行，放不下可以左右滑，点一下直接跳到对应分组；往下翻的时候，当前所在分组的标签会自动加粗描边，标签若在可视区外也会自动滑进来。点某个学生可以进他的详情页。</p>`;});
+<p><strong>只看最近 ${c.window} 场</strong>（设置里可调 3–5 场），而且<strong>不取中位数</strong>——每个点都参与计算，所以“中位数一样但过程更差”的情况不会被抹平。四个量：<br>\
+· <strong>Δ</strong>＝窗口首末差<br>\
+· <strong>每场</strong>＝Δ ÷（场次−1），均匀速度<br>\
+· <strong>最新一步</strong>＝最后一场 − 上一场（这次考试有没有突然掉/突然冲）<br>\
+· <strong>偏离趋势</strong>＝最后一场 − 趋势线在该点的值（残差，抓单次异常）</p>\
+<p><strong>主状态</strong>（按老师关注度排序，就这五个；<strong>持续偏低单独成组放在最上面</strong>）：<br>\
+· <strong>下降</strong>：每场 ≥ ${Math.round(c.step*100)} 个百分点，且相邻差分里至少 2 次在变差（中间反弹也算）；<strong>这次陡降</strong>也归到这里<br>\
+· <strong>持续偏低（首栏）</strong>：最近 3 次里至少 2 次落在后 ${Math.round((1-c.lowPct)*100)}%（段排位 ≥ ${gradePctText(c.lowPct)}）。<strong>凡是满足这条的学生都归到首栏</strong>，原来判出的“下降/进步”会变成标签跟在后面；组内按“现在的段排位越靠后越前”排。<br>\
+· <strong>进步</strong>：第一条朝好方向的镜像，或这次陡升<br>\
+· <strong>平稳</strong>：以上都不成立<br>\
+· <strong>数据不足</strong>：有效成绩不足 2 场</p>\
+<p><strong>附加标签</strong>（只留三个）：<br>\
+· <strong>陡降 / 陡升</strong>：<strong>本次考试</strong>比上一次变化 ≥ ${Math.round(c.jump*100)} 个百分点，或明显偏离趋势线——这就是“这次考得明显不对/明显好”<br>\
+· <strong>持续高分</strong>：最近 3 次里至少 2 次落在前 ${Math.round((1-c.lowPct)*100)}%，和“持续偏低”正好对称（正面标签）</p>\
+<p><strong>右边那条小条＝趋势方向</strong>：<strong>红＝这段在退步</strong>（段排位变大）、<strong>绿＝在进步</strong>（段排位变小），长度是变化幅度（|Δ|×100 + |偏离趋势|×60 + 同向次数×3）。它和左边的状态标签是两件事：例如“持续偏低 + 绿条”＝底子弱但正在往回爬，“持续偏低 + 红条”＝既弱还在滑。排序也按这条的长短，长的排前面。</p>\
+<p>缺考不计入计算（但会标注）。每行下面写着依据：最近几场的段排位、Δ、每场、最新一步、偏离趋势、变差/变好次数、最早到现在的差。上方状态标签横排一行，点一下跳到对应分组；点学生进详情页。</p>`;});

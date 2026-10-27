@@ -624,3 +624,9 @@ button.avatar:hover { border-color:var(--teal); }
 .class-flow-group { flex-direction:column; align-items:flex-start; gap:6px; }
 .class-flow-title { flex:0 0 auto; width:100%; }
 .class-flow-chips { width:100%; }
+/* 成绩分析：每行右侧的“严重度”小条（越长越严重），颜色跟主状态一致 */
+.grade-sev { margin-left:auto; flex:0 0 auto; display:inline-block; width:56px; height:7px; border-radius:999px; background:#eef2f1; overflow:hidden; }
+.grade-sev > i { display:block; height:100%; border-radius:999px; background:#9fb3af; }
+.grade-sev.is-down > i { background:linear-gradient(90deg,#f97316,#dc2626); }
+.grade-sev.is-up > i { background:linear-gradient(90deg,#34b3a6,#0f766e); }
+.grade-sev.is-flat > i { background:#b9c6c3; }

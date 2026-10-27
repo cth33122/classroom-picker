@@ -209,27 +209,23 @@ function renderSettings(){  const s=state.settings,historyOptions=HISTORY_RULE_O
 <h2 class="with-help">成绩分析 ${panelHelpBtn('grade.analysis','成绩分析判定规则的说明')}</h2>\
 <div class="grid three">\
 <div class="field">\
-<label>持续偏低：后百分之…</label>\
+<label>看最近几场（场）</label>\
+<input data-setting="gradeWindow" type="number" min="3" max="5" step="1" value="${s.gradeWindow||GRADE_STATUS_DEFAULTS.window}">\
+</div>\
+<div class="field">\
+<label>走低：平均每场变化</label>\
+<input data-setting="gradeStep" type="number" min="0.01" max="0.40" step="0.01" value="${s.gradeStep||GRADE_STATUS_DEFAULTS.step}">\
+</div>\
+<div class="field">\
+<label>陡降/陡升：最近一步变化</label>\
+<input data-setting="gradeJump" type="number" min="0.02" max="0.60" step="0.01" value="${s.gradeJump||GRADE_STATUS_DEFAULTS.jump}">\
+</div>\
+<div class="field">\
+<label>持续偏低/持续高分：分界百分之…</label>\
 <input data-setting="gradeLowPct" type="number" min="0.5" max="0.95" step="0.05" value="${s.gradeLowPct||GRADE_STATUS_DEFAULTS.lowPct}">\
 </div>\
-<div class="field">\
-<label>单次异常：比常态差多少</label>\
-<input data-setting="gradeAnomaly" type="number" min="0.05" max="0.6" step="0.05" value="${s.gradeAnomaly||GRADE_STATUS_DEFAULTS.anomaly}">\
 </div>\
-<div class="field">\
-<label>持续下降：两个窗口差多少</label>\
-<input data-setting="gradeDropWindow" type="number" min="0.02" max="0.6" step="0.05" value="${s.gradeDropWindow||GRADE_STATUS_DEFAULTS.dropWindow}">\
-</div>\
-<div class="field">\
-<label>正在改善：回升多少</label>\
-<input data-setting="gradeImproveWindow" type="number" min="0.02" max="0.6" step="0.05" value="${s.gradeImproveWindow||GRADE_STATUS_DEFAULTS.improveWindow}">\
-</div>\
-<div class="field">\
-<label>至少几次有效成绩才判定</label>\
-<input data-setting="gradeMinExams" type="number" min="2" max="10" step="1" value="${s.gradeMinExams||GRADE_STATUS_DEFAULTS.minExams}">\
-</div>\
-</div>\
-<p class="hint">以上都用“段排位百分位”（段排名÷当场段人数，0 最好、1 最差）。改完到“学生”页点“成绩分析”即可看到结果。</p>\
+<p class="hint">都用“段排位百分位”（段排名÷当场段人数，0 最好、1 最差），数值越小越敏感。只看最近几场、不取中位数，中间有反弹也能判出来。「分界百分之」同时决定两头：后 20%＝持续偏低（单独成组放最上面），前 20%＝持续高分。改完到“学生”页点“成绩分析”即可看到结果。</p>\
 </div>\
 <div class="panel">\
 <h2 class="with-help">班级分析 ${panelHelpBtn('class.analysis','班级分析的说明')}</h2>\
