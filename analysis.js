@@ -235,25 +235,37 @@ function gradeEvidenceText(row,config){
   // 只显示近几场考试的段排位比例变化，别的说明都收进标题的“？”里
   return `最近 ${ps.length} 场段排位 ${ps.map(v=>gradePctText(v)).join(' → ')}`;
 }
+// 每行的小折线：把最近几场的段排位比例画成一条折线（值越小越好，所以小值在上）
+// 纯 SVG，宽度固定 44、高 20；不足 2 个点返回空串。
+function gradeSparkline(ps){
+  const list=(ps||[]).filter(v=>Number.isFinite(v));
+  if(list.length<2)return '';
+  const W=44,H=20,pad=3;
+  const min=Math.min(...list),max=Math.max(...list),span=(max-min)||1;
+  const x=i=>pad+i*(W-2*pad)/(list.length-1);
+  const y=v=>pad+((v-min)/span)*(H-2*pad);
+  const pts=list.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+  const last=list.length-1;
+  return `<svg class="grade-spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true">\
+<polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"></polyline>\
+<circle cx="${x(last).toFixed(1)}" cy="${y(list[last]).toFixed(1)}" r="2.1" fill="currentColor"></circle>\
+</svg>`;
+}
 function gradeRowHtml(row,config){
   const s=row.student;
   const name=esc(s.displayName||s.name||'');
   const tags=row.tags.map(k=>gradeChip(k)).join('');
-  const score=Number(row.evidence.score)||0;
-  const width=Math.max(6,Math.min(100,score));
-  // 小条 = 这段时间的趋势方向：红＝在退步（段排位变大），绿＝在进步（段排位变小），长度＝变化幅度。
-  // 它和左边的状态标签是两件事：比如“持续偏低 + 绿条”＝底子弱但正在往回爬。
-  // 数据不足（只有 1 场）没有趋势，就不画条。
-  const delta=Number(row.evidence.delta);
-  const worse=!Number.isFinite(delta)||delta>=0;
-  const tone=worse?'is-down':'is-up';
-  const showBar=row.primary!=='short';
-  const sevTitle=showBar?`趋势${worse?'退步':'进步'}：幅度 ${score}（越长变化越大）`:'有效成绩不足，没有趋势可看';
+  // 行右侧的迷你折线：近几场段排位走势（值越小越靠上＝名次在进步）。
+  // 原来这里有一条红绿“颜色条”，已经去掉；现在只留这条折线，路径和方向都由它表达。
+  const spark=gradeSparkline(row.evidence.ps);
+  const sparkHtml=spark
+    ?`<span class="grade-spark-wrap" title="最近几场段排位走势（越往上越好）：${(row.evidence.ps||[]).map(v=>gradePctText(v)).join(' → ')}">${spark}</span>`
+    :'';
   return `<button type="button" class="grade-row" data-grade-student="${esc(s.id)}">\
 <span class="grade-row-main">\
 ${avatarHtml(s,{size:34})}\
 <span class="grade-row-who"><strong class="${focusNameClass(s)}">${name}</strong>${gradeChip(row.primary)}${tags}</span>\
-${showBar?`<span class="grade-sev ${tone}" title="${sevTitle}"><i style="width:${width}%"></i></span>`:''}\
+${sparkHtml}\
 </span>\
 <span class="grade-row-evidence hint">${gradeEvidenceText(row,config)}</span>\
 </button>`;
@@ -370,5 +382,5 @@ registerPanelHelp('grade.analysis','成绩分析',
 <p><strong>附加标签</strong>（只留三个）：<br>\
 · <strong>陡降 / 陡升</strong>：<strong>本次考试</strong>比上一次变化 ≥ ${Math.round(c.jump*100)} 个百分点，或明显偏离趋势线——这就是“这次考得明显不对/明显好”<br>\
 · <strong>持续高分</strong>：最近 3 次里至少 2 次落在前 ${Math.round((1-c.lowPct)*100)}%，和“持续偏低”正好对称（正面标签）</p>\
-<p><strong>右边那条小条＝趋势方向</strong>：<strong>红＝这段在退步</strong>（段排位变大）、<strong>绿＝在进步</strong>（段排位变小），长度是变化幅度（|Δ|×100 + |偏离趋势|×60 + 同向次数×3）。它和左边的状态标签是两件事：例如“持续偏低 + 绿条”＝底子弱但正在往回爬，“持续偏低 + 红条”＝既弱还在滑。排序也按这条的长短，长的排前面。</p>\
+<p><strong>每行右上角那条迷你折线</strong>是最近几场的段排位走势：<strong>值越小越靠上</strong>，所以线往上走＝名次在进步、往下走＝在退步，最后一颗实心点表示最新一次。它和左边的状态标签是两件事：例如“持续偏低 + 折线往上”＝底子弱但正在往回爬。列表排序仍按变化幅度（|Δ|×100 + |偏离趋势|×60 + 同向次数×3），变化大的排前面。</p>\
 <p>缺考不计入计算（但会标注）。<strong>每行下面只显示最近几场的段排位变化</strong>（例如 52% → 56% → 84% → 45%），其它判定细节都在这一页的标题说明里。上方状态标签横排一行，点一下跳到对应分组；点学生进详情页。</p>`;});
