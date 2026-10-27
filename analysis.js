@@ -235,31 +235,50 @@ function gradeEvidenceText(row,config){
   // 只显示近几场考试的段排位比例变化，别的说明都收进标题的“？”里
   return `最近 ${ps.length} 场段排位 ${ps.map(v=>gradePctText(v)).join(' → ')}`;
 }
-// 每行的小折线：把最近几场的段排位比例画成一条折线（值越小越好，所以小值在上）
-// 纯 SVG，宽度固定 44、高 20；不足 2 个点返回空串。
-function gradeSparkline(ps){
+// 每行的小折线：最近几场的段排位比例（值越小越好，所以小值在上）。
+// 关键：**全班共用同一把纵轴刻度**（不只是各人自己的 min/max），这样不同学生的折线高低可以直接比；
+// 再画两条虚线基准（前 20% / 后 20%），高下立见。不足 2 个点返回空串。
+function gradeSparkDomain(rows,lowPct){
+  const vals=[];
+  (rows||[]).forEach(r=>{(r.evidence&&r.evidence.ps||[]).forEach(v=>{if(Number.isFinite(v))vals.push(v);});});
+  if(!vals.length)return {lo:0,hi:1};
+  let lo=Math.min(...vals),hi=Math.max(...vals);
+  const pad=Math.max(0.02,(hi-lo)*0.08);
+  lo-=pad;hi+=pad;
+  if(hi-lo<0.15){const mid=(hi+lo)/2;lo=mid-0.075;hi=mid+0.075;}   // 最少 15 个百分点跨度，免得把噪声放大
+  lo=Math.max(0,lo);hi=Math.min(1,hi);
+  if(hi-lo<0.05)hi=Math.min(1,lo+0.05);
+  return {lo,hi};
+}
+function gradeSparkline(ps,domain,config){
   const list=(ps||[]).filter(v=>Number.isFinite(v));
   if(list.length<2)return '';
-  const W=44,H=20,pad=3;
-  const min=Math.min(...list),max=Math.max(...list),span=(max-min)||1;
+  const d=domain&&Number.isFinite(domain.lo)&&Number.isFinite(domain.hi)&&domain.hi>domain.lo?domain:{lo:0,hi:1};
+  const W=52,H=24,pad=3;
   const x=i=>pad+i*(W-2*pad)/(list.length-1);
-  const y=v=>pad+((v-min)/span)*(H-2*pad);
+  const y=v=>pad+Math.max(0,Math.min(1,(v-d.lo)/(d.hi-d.lo)))*(H-2*pad);
   const pts=list.map((v,i)=>`${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
   const last=list.length-1;
+  // 基准线：前 20%（段排位 0.20）与后 20%（0.80），在刻度范围内才画
+  const lowPct=(config&&Number.isFinite(config.lowPct))?config.lowPct:0.80;
+  const marks=[{v:1-lowPct,color:'#0f9c8f'},{v:lowPct,color:'#d97706'}]
+    .filter(m=>m.v>d.lo&&m.v<d.hi)
+    .map(m=>{const yy=y(m.v).toFixed(1);return `<line x1="${pad}" y1="${yy}" x2="${W-pad}" y2="${yy}" stroke="${m.color}" stroke-width="1" stroke-dasharray="2 2" opacity=".75"></line>`;})
+    .join('');
   return `<svg class="grade-spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" aria-hidden="true">\
-<polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"></polyline>\
-<circle cx="${x(last).toFixed(1)}" cy="${y(list[last]).toFixed(1)}" r="2.1" fill="currentColor"></circle>\
+${marks}\
+<polyline points="${pts}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"></polyline>\
+<circle cx="${x(last).toFixed(1)}" cy="${y(list[last]).toFixed(1)}" r="2.2" fill="currentColor"></circle>\
 </svg>`;
 }
-function gradeRowHtml(row,config){
+function gradeRowHtml(row,config,domain){
   const s=row.student;
   const name=esc(s.displayName||s.name||'');
   const tags=row.tags.map(k=>gradeChip(k)).join('');
-  // 行右侧的迷你折线：近几场段排位走势（值越小越靠上＝名次在进步）。
-  // 原来这里有一条红绿“颜色条”，已经去掉；现在只留这条折线，路径和方向都由它表达。
-  const spark=gradeSparkline(row.evidence.ps);
+  // 行右侧的迷你折线：近几场段排位走势（全班同一刻度，越靠上越好）
+  const spark=gradeSparkline(row.evidence.ps,domain,config);
   const sparkHtml=spark
-    ?`<span class="grade-spark-wrap" title="最近几场段排位走势（越往上越好）：${(row.evidence.ps||[]).map(v=>gradePctText(v)).join(' → ')}">${spark}</span>`
+    ?`<span class="grade-spark-wrap" title="最近几场段排位走势（全班同一刻度，越往上越好）：${(row.evidence.ps||[]).map(v=>gradePctText(v)).join(' → ')}">${spark}</span>`
     :'';
   return `<button type="button" class="grade-row" data-grade-student="${esc(s.id)}">\
 <span class="grade-row-main">\
@@ -275,12 +294,14 @@ function renderGradeAnalysis(){
   const {rows,counts,config}=data;
   const total=rows.length;
   const groupKeys=GRADE_STATUS_ORDER.filter(k=>(counts[k]||0)>0);
+  // 全班共用一把纵轴刻度，折线高低才能跨学生比较
+  const sparkDomain=gradeSparkDomain(rows,config.lowPct);
   const groups=groupKeys.map(key=>{
     const list=rows.filter(r=>r.primary===key);
     const meta=GRADE_STATUS_META[key];
     return `<div class="grade-group" data-grade-group="${key}">\
 <div class="grade-group-head" title="${esc(meta.hint)}"><strong>${esc(meta.label)}</strong><span class="hint">${esc(meta.level)} · ${list.length} 人</span></div>\
-${list.map(r=>gradeRowHtml(r,config)).join('')}\
+${list.map(r=>gradeRowHtml(r,config,sparkDomain)).join('')}\
 </div>`;
   }).join('');
   // 状态标签横排一行（放不下就左右滑），同时也是“跳到对应分组”的按钮
@@ -382,5 +403,5 @@ registerPanelHelp('grade.analysis','成绩分析',
 <p><strong>附加标签</strong>（只留三个）：<br>\
 · <strong>陡降 / 陡升</strong>：<strong>本次考试</strong>比上一次变化 ≥ ${Math.round(c.jump*100)} 个百分点，或明显偏离趋势线——这就是“这次考得明显不对/明显好”<br>\
 · <strong>持续高分</strong>：最近 3 次里至少 2 次落在前 ${Math.round((1-c.lowPct)*100)}%，和“持续偏低”正好对称（正面标签）</p>\
-<p><strong>每行右上角那条迷你折线</strong>是最近几场的段排位走势：<strong>值越小越靠上</strong>，所以线往上走＝名次在进步、往下走＝在退步，最后一颗实心点表示最新一次。它和左边的状态标签是两件事：例如“持续偏低 + 折线往上”＝底子弱但正在往回爬。列表排序仍按变化幅度（|Δ|×100 + |偏离趋势|×60 + 同向次数×3），变化大的排前面。</p>\
+<p><strong>每行右上角那条迷你折线</strong>是最近几场的段排位走势，<strong>全班用同一把纵轴刻度</strong>（取全班这段范围内最小～最大值，再留一点边距），所以不同学生之间的高低可以直接比：线越靠上＝整体越靠前。<strong>两条虚线</strong>是 <strong>前 20%（青）</strong> 和 <strong>后 20%（橙）</strong> 的基准位，落在橙虚线以下就是段后 20%。最后一颗实心点是最近一次。它和左边的状态标签是两件事：例如“持续偏低 + 折线往上”＝底子弱但正在往回爬。列表排序仍按变化幅度（|Δ|×100 + |偏离趋势|×60 + 同向次数×3），变化大的排前面。</p>\
 <p>缺考不计入计算（但会标注）。<strong>每行下面只显示最近几场的段排位变化</strong>（例如 52% → 56% → 84% → 45%），其它判定细节都在这一页的标题说明里。上方状态标签横排一行，点一下跳到对应分组；点学生进详情页。</p>`;});
