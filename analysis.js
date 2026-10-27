@@ -6,7 +6,7 @@
 // 老师最关心的两件事排在最前：有下降趋势的、持续偏低的。
 // 这里全是纯计算 + 一处渲染，不写入任何数据。
 
-const GRADE_STATUS_DEFAULTS={lowPct:0.80,window:4,step:0.05,jump:0.12,stepMin:0.02};
+const GRADE_STATUS_DEFAULTS={lowPct:0.80,window:4,step:0.06,jump:0.15,stepMin:0.02};
 const GRADE_STATUS_META={
   drop:{label:'下降',level:'关注',tone:'danger',hint:'最近几场整体在往下走（看每场变化和同向次数，允许中间有反弹）'},
   low:{label:'持续偏低',level:'关注',tone:'danger',hint:'最近三次里至少两次落在段排位后百分之二十'},
@@ -230,20 +230,10 @@ function openGradeAnalysisForStudent(id){
 }
 function gradeEvidenceText(row,config){
   const e=row.evidence;
-  const bits=[];
-  if(e.examName)bits.push(`${esc(e.examName)}${e.examDate?'（'+esc(e.examDate)+'）':''}`);
-  if(e.ps&&e.ps.length){
-    bits.push(`最近 ${e.ps.length} 场段排位 ${e.ps.map(v=>gradePctText(v)).join(' → ')}`);
-    bits.push(`Δ ${e.delta>=0?'+':''}${Math.round(e.delta*100)}pp（每场 ${e.perExam>=0?'+':''}${(e.perExam*100).toFixed(1)}）`);
-    bits.push(`最新一步 ${e.lastStep>=0?'+':''}${Math.round(e.lastStep*100)}pp`);
-    if(Number.isFinite(e.resid))bits.push(`偏离趋势 ${e.resid>=0?'+':''}${Math.round(e.resid*100)}pp`);
-    bits.push(`变差 ${e.worse} 次 · 变好 ${e.better} 次`);
-    if(Number.isFinite(e.range))bits.push(`极差 ${Math.round(e.range*100)}pp · 反转 ${e.reversals||0} 次`);
-    if(e.longDiff!==null&&Number.isFinite(e.longDiff))bits.push(`长期 ${e.longDiff>=0?'+':''}${Math.round(e.longDiff*100)}pp`);
-  }
-  if(e.lowHits)bits.push(`后 ${Math.round((1-config.lowPct)*100)}% 命中 ${e.lowHits}/3`);
-  if(row.primary==='short')bits.push(`有效成绩 ${e.count} 场（至少要 2 场）`);
-  return bits.join(' ｜ ');
+  const ps=e.ps||[];
+  if(!ps.length)return row.primary==='short'?`有效成绩 ${e.count} 场（至少要 2 场）`:'';
+  // 只显示近几场考试的段排位比例变化，别的说明都收进标题的“？”里
+  return `最近 ${ps.length} 场段排位 ${ps.map(v=>gradePctText(v)).join(' → ')}`;
 }
 function gradeRowHtml(row,config){
   const s=row.student;
@@ -381,4 +371,4 @@ registerPanelHelp('grade.analysis','成绩分析',
 · <strong>陡降 / 陡升</strong>：<strong>本次考试</strong>比上一次变化 ≥ ${Math.round(c.jump*100)} 个百分点，或明显偏离趋势线——这就是“这次考得明显不对/明显好”<br>\
 · <strong>持续高分</strong>：最近 3 次里至少 2 次落在前 ${Math.round((1-c.lowPct)*100)}%，和“持续偏低”正好对称（正面标签）</p>\
 <p><strong>右边那条小条＝趋势方向</strong>：<strong>红＝这段在退步</strong>（段排位变大）、<strong>绿＝在进步</strong>（段排位变小），长度是变化幅度（|Δ|×100 + |偏离趋势|×60 + 同向次数×3）。它和左边的状态标签是两件事：例如“持续偏低 + 绿条”＝底子弱但正在往回爬，“持续偏低 + 红条”＝既弱还在滑。排序也按这条的长短，长的排前面。</p>\
-<p>缺考不计入计算（但会标注）。每行下面写着依据：最近几场的段排位、Δ、每场、最新一步、偏离趋势、变差/变好次数、最早到现在的差。上方状态标签横排一行，点一下跳到对应分组；点学生进详情页。</p>`;});
+<p>缺考不计入计算（但会标注）。<strong>每行下面只显示最近几场的段排位变化</strong>（例如 52% → 56% → 84% → 45%），其它判定细节都在这一页的标题说明里。上方状态标签横排一行，点一下跳到对应分组；点学生进详情页。</p>`;});
