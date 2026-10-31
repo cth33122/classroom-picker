@@ -628,3 +628,13 @@ button.avatar:hover { border-color:var(--teal); }
 .grade-row-evidence { font-size:12px; line-height:1.5; }
 .grade-spark-wrap { margin-left:auto; flex:0 0 auto; display:inline-flex; align-items:center; }
 .grade-spark { display:block; color:#0f766e; }
+/* 点名页：标题右边的「点名统计」入口（原来“点名规则介绍”那一行） */
+.candidate-panel-head { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; }
+.rollcall-stats-btn { flex:0 0 auto; min-height:0; padding:5px 12px; font-size:13px; }
+
+/* 学生页：跨班级搜索结果 */
+.student-search-row { display:flex; align-items:center; justify-content:space-between; gap:8px; width:100%; padding:8px 10px; margin-bottom:6px; border:1px solid var(--line); border-radius:8px; background:#fff; text-align:left; }
+.student-search-row:hover, .student-search-row:focus { border-color:var(--teal); }
+.student-search-main { display:flex; align-items:center; gap:8px; min-width:0; }
+.student-search-text { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.student-search-score { display:flex; flex-direction:column; align-items:flex-end; gap:2px; flex:0 0 auto; }

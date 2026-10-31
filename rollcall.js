@@ -212,8 +212,8 @@ ${seatPanel}\
 ${seatedCount>0?'':'<div class="rollcall-gap"></div>'}\
 <div class="panel">\
 <div class="candidate-panel-head">\
-<h3>${state.selectedCandidate?'本次点名':'本次候选'}</h3>\
-<button class="note-link" id="rulesBtn">点名规则介绍</button>\
+<h3 class="with-help">${state.selectedCandidate?'本次点名':'本次候选'} ${panelHelpBtn('rollcall.rules','点名规则的说明')}</h3>\
+<button type="button" class="secondary rollcall-stats-btn" id="rollcallStatsBtn" title="看点名统计、点名时间与题目难度统计">点名统计</button>\
 </div>\
 ${candidateArea}${!state.selectedCandidate&&visible.length===0&&state.currentClass?`<p class="hint">${String(state.settings.sameDayRepeat)==='allow'?'当天已点名的学生也可以再次进入候选。':'当天已点名的学生不会再次进入候选。'}标记为“不参与点名”的学生不会进入候选。</p>`:''}${state.selectedCandidate?'<div class="selected-actions"><button class="danger change-student" id="markSelectedAbsent">缺席</button><button class="secondary change-student" id="undoCallBtn">撤销</button></div>':''}</div>\
 </div>\
@@ -229,7 +229,9 @@ ${candidateArea}${!state.selectedCandidate&&visible.length===0&&state.currentCla
 </div>\
 ${noScores?'<p class="hint">本班还没有成绩，三档难度都按同权随机（不按分数分层），其余规则照旧。</p>':''}\
 </div>`;
-  $('#rulesBtn').onclick=()=>openRollcallRules();
+  const statsBtn=$('#rollcallStatsBtn');
+  if(statsBtn)statsBtn.onclick=()=>setActiveView('history',{reset:true});
+  bindPanelHelp();
   // 点“座位表”标题收起/展开；收起后候选项会换成大头像，选择记在本机
   const seatToggle=$('#seatPanelToggle');
   if(seatToggle)seatToggle.onclick=()=>{
@@ -311,31 +313,14 @@ async function undoSelectedCall(){
   toast(hadReview?'已撤销本次点名（该次的评价与问题记录一并删除）':'已撤销本次点名');
 }
 
-// 点名规则介绍弹窗
-function openRollcallRules(){
-  $('#rulesModal')?.remove();
-  const allowRepeat=String(state.settings.sameDayRepeat)==='allow';
-  const modal=document.createElement('div');
-  modal.id='rulesModal';modal.className='modal-backdrop';
-  modal.innerHTML=`<div class="modal-card rules-card" role="dialog" aria-modal="true">\
-<div class="modal-header">\
-<h2>点名规则介绍</h2>\
-<button class="icon-button modal-close" aria-label="关闭">×</button>\
-</div>\
-<div class="rules-body">\
-<p><strong>近期点名次数</strong>：统计该生${historyRuleWindow(state.settings.historyRule)}的点名条数，与设置页“近期点名次数统计规则”一致（当前：${historyRuleLabel(state.settings.historyRule)}）。</p>\
+// 点名规则介绍：不再是页面上的一个按钮+弹窗，改成标题右边那个“？”（和其它页面一致）
+// 原来“点名规则介绍”占的那一行，现在放「点名统计」入口（进统计页）
+registerPanelHelp('rollcall.rules','点名规则介绍',
+  () => {
+    const allowRepeat=String(state.settings.sameDayRepeat)==='allow';
+    return `<p><strong>近期点名次数</strong>：统计该生${historyRuleWindow(state.settings.historyRule)}的点名条数，与设置页“近期点名次数统计规则”一致（当前：${historyRuleLabel(state.settings.historyRule)}）。</p>\
 <p><strong>抽中权重</strong>：近期被点得越多，抽中权重越低；<strong>近期没有被点到的学生抽中权重会升高</strong>，因此更容易被抽到。特别关注的学生不受“越点越低”的衰减影响，除非手动取消关注。</p>\
 <p><strong>当天重复点名</strong>：${allowRepeat?'允许 —— 当天已点过的学生仍可再次进入候选。':'不允许 —— 当天已点过的学生不再进入候选。'}</p>\
 <p><strong>其他</strong>：标记为“不参与点名”的学生不会进入候选；成绩靠后的学生（范围见设置页）在近期零次点名时还会获得额外加权。</p>\
-<p><strong>没有成绩时</strong>：如果本班一场成绩都还没有（例如只导入了名册），三档难度都按“同权随机”抽取，不按分数分层，其余规则同上。</p>\
-</div>\
-<div class="actions">\
-<button class="primary" id="rulesClose">知道了</button>\
-</div>\
-</div>`;
-  document.body.appendChild(modal);
-  const close=()=>modal.remove();
-  modal.querySelector('.modal-close').onclick=close;
-  $('#rulesClose').onclick=close;
-  modal.onclick=ev=>{if(ev.target===modal)close();};
-}
+<p><strong>没有成绩时</strong>：如果本班一场成绩都还没有（例如只导入了名册），三档难度都按“同权随机”抽取，不按分数分层，其余规则同上。</p>`;
+  });

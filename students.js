@@ -369,7 +369,27 @@ function renderStudents(){
 <div id="studentList">${studentRows(filtered)}</div>\
 </div>`;
     
-  $('#studentSearch').oninput=e=>{$('#studentList').innerHTML=studentRows(filtered.filter(s=>String(s.name||'').includes(e.target.value.trim())));bindStudentActions();};
+  // 搜学生：**跨班级**搜（本班优先，再其它班）；点结果会先切到那个学生的班，再进详情
+  const bindSearchHits=()=>{
+    $$('#studentList [data-search-student]').forEach(b=>b.onclick=()=>{
+      const stu=state.students.find(x=>x.id===b.dataset.searchStudent);
+      if(!stu){toast('这位学生已经找不到了');return;}
+      if(stu.className&&stu.className!==state.currentClass){
+        setCurrentClass(stu.className);
+        const sel=$('#globalClassSelect');
+        if(sel)sel.value=state.currentClass;      // 顶栏班级跟着换
+        toast(`已切到 ${state.currentClass}`);
+      }
+      state.studentDetail=null;state.studentExamExpand=false;
+      openStudentDetail(stu.id);
+    });
+  };
+  $('#studentSearch').oninput=e=>{
+    const q=String(e.target.value||'').trim();
+    if(!q){$('#studentList').innerHTML=studentRows(filtered);bindStudentActions();return;}
+    $('#studentList').innerHTML=searchResultRows(q);
+    bindSearchHits();
+  };
     $$('[data-student-sort]').forEach(b=>b.onclick=()=>toggleStudentHeader(b.dataset.studentSort));
     $('#gradeAnalysisBtn').onclick=()=>openGradeAnalysis();
     $('#classAnalysisBtn').onclick=()=>openClassAnalysis();
@@ -378,6 +398,38 @@ function renderStudents(){
     bindStudentActions();
     bindClassChangeBanner();      // 本班班级变动提示条：核对无误 / 撤销这批变动
     
+}
+
+// 跨班级搜索结果：本班排前面、其它班排后面；每行显示班级和“当前考试”的分数
+function searchResultRows(query){
+  const q=String(query||'').trim();
+  if(!q)return '';
+  const hits=(state.students||[]).filter(s=>s&&(String(s.name||'').includes(q)||String(s.displayName||'').includes(q)));
+  if(!hits.length)return `<div class="empty">没有找到「${esc(q)}」相关的学生</div>`;
+  const cls=state.currentClass||'';
+  hits.sort((a,b)=>{
+    const ka=a.className===cls?0:1,kb=b.className===cls?0:1;
+    if(ka!==kb)return ka-kb;
+    const ca=String(a.className||'').localeCompare(String(b.className||''),'zh-CN');
+    if(ca)return ca;
+    return String(a.name||'').localeCompare(String(b.name||''),'zh-CN');
+  });
+  const exam=orderedExams().find(e=>e.id===state.studentCurrentExamId)||null;
+  return hits.map(s=>{
+    const r=exam?examResult(exam,s):null;
+    const score=r&&Number.isFinite(Number(r.score))?`${r.score}分`:'—';
+    const other=s.className&&s.className!==cls;
+    return `<button type="button" class="student-search-row" data-search-student="${esc(s.id)}">\
+<span class="student-search-main">\
+${avatarHtml(s,{size:34})}\
+<span class="student-search-text">\
+<strong class="${focusNameClass(s)}">${esc(s.displayName||s.name)}</strong>\
+<small class="hint">${esc(s.className||'未分班')}${other?' · 点一下切到这个班':''}</small>\
+</span>\
+</span>\
+<span class="student-search-score"><strong>${esc(score)}</strong><small class="hint">当前考试</small></span>\
+</button>`;
+  }).join('');
 }
 
 // 选考试：点学生页那行“当前考试”弹出，选完学生列表的“当前成绩 / 位次变化”按这一场算

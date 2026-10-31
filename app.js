@@ -1,7 +1,7 @@
 // 入口：视图分发、数据加载、service worker 注册
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v249';
+const APP_VERSION = 'v250';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -28,7 +28,10 @@ function goToView(name){
 function highlightView(name){
   state.view=name;
   $$('.view').forEach(x=>x.classList.toggle('active',x.id===`view-${name}`));
-  $$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.view===name));
+  // 统计页已经从底部导航里拿掉（改为点名页的「点名统计」入口），它算点名页的延伸：
+  // 停在统计页时仍然高亮“点名”，免得底部一排标签全都不亮。
+  const tabName=name==='history'?'rollcall':name;
+  $$('.tab').forEach(x=>x.classList.toggle('active',x.dataset.view===tabName));
   if(typeof syncSwipeLock==='function')syncSwipeLock();   // 换页时同步“是否禁掉左右滑动”
 }
 // 点标签：滚到对应页；点“学生”标签时回到学生列表初始页并置顶
