@@ -1,7 +1,7 @@
 // 入口：视图分发、数据加载、service worker 注册
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v250';
+const APP_VERSION = 'v251';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -176,6 +176,12 @@ function backCloseDetail(){
 // 没有按钮：气泡只是提醒，再按一次返回键才真的退出。
 // 退一层；返回 true 表示“已处理，应取消这次后退”
 function backHandleLayer(){
+  if(document.getElementById('avatarQuizPage')){   // 认人小游戏：整屏页面，先关它
+    if(typeof closeAvatarQuiz==='function')closeAvatarQuiz();
+    else document.getElementById('avatarQuizPage').remove();
+    backLog('关闭认人小游戏');
+    return true;
+  }
   if(backCloseTopModal()){backLog('关闭弹窗');return true;}
   if(backCloseDetail())return true;
   if(state.gradeAnalysisOpen){          // 成绩分析页：有来源就回那位学生的详情，否则回学生列表

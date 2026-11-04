@@ -638,3 +638,42 @@ button.avatar:hover { border-color:var(--teal); }
 .student-search-main { display:flex; align-items:center; gap:8px; min-width:0; }
 .student-search-text { display:flex; flex-direction:column; gap:2px; min-width:0; }
 .student-search-score { display:flex; flex-direction:column; align-items:flex-end; gap:2px; flex:0 0 auto; }
+
+/* 认人小游戏（「学生头像」的 ？ 长按约 0.9 秒进入）：整屏一页，盖住底部导航与弹窗 */
+.quiz-page { position:fixed; inset:0; z-index:20; display:flex; flex-direction:column; padding:calc(14px + env(safe-area-inset-top)) 16px calc(14px + env(safe-area-inset-bottom)); background:var(--bg); overflow:auto; }
+.quiz-head { display:flex; align-items:center; gap:10px; max-width:980px; width:100%; margin:0 auto; }
+.quiz-head h2 { margin:0; flex:1 1 auto; font-size:18px; }
+.quiz-score { flex:0 0 auto; color:var(--muted); font-size:13px; }
+.quiz-back { flex:0 0 auto; min-height:0; padding:2px 6px; border:0; border-radius:6px; background:transparent; color:var(--ink); font-size:22px; line-height:1; }
+.quiz-body { flex:1 1 auto; display:flex; flex-direction:column; max-width:980px; width:100%; margin:0 auto; padding-top:8px; }
+.quiz-intro { display:grid; gap:10px; align-content:start; }
+.quiz-lead { margin:2px 0 0; color:var(--ink); font-size:14.5px; line-height:1.6; }
+.quiz-scope { margin:0; color:var(--muted); font-size:13px; }
+.quiz-best { margin:0; color:var(--muted); font-size:13px; }
+.quiz-mode { display:flex; flex-direction:column; align-items:flex-start; gap:3px; text-align:left; min-height:0; padding:13px 15px; }
+.quiz-mode strong { font-size:15px; }
+.quiz-mode span { color:var(--muted); font-size:12.5px; font-weight:400; }
+.quiz-stage { flex:1 1 auto; display:flex; flex-direction:column; align-items:center; gap:12px; }
+.quiz-prompt { display:flex; align-items:center; justify-content:center; min-height:200px; }
+.quiz-face .avatar { box-shadow:0 12px 32px rgba(10,30,26,.18); }
+.quiz-name { font-size:clamp(36px,12vw,60px); font-weight:600; letter-spacing:.08em; color:var(--name-ink); line-height:1.15; padding:0 6px; text-align:center; word-break:break-all; }
+.quiz-tip { margin:0; color:var(--muted); font-size:13px; }
+.quiz-options { width:100%; display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; }
+.quiz-option { display:flex; align-items:center; justify-content:center; min-height:64px; padding:10px; border:1px solid var(--line); border-radius:10px; background:var(--paper); color:var(--ink); }
+.quiz-option:not(:disabled):hover { border-color:var(--teal); }
+.quiz-option.is-name span { font-size:17px; font-weight:600; }
+.quiz-option.is-avatar .avatar { box-shadow:0 4px 14px rgba(10,30,26,.14); }
+.quiz-option.is-correct { border-color:var(--teal); background:rgba(15,118,110,.12); }
+.quiz-option.is-wrong { border-color:#c2410c; background:rgba(194,65,12,.12); }
+.quiz-option.is-muted { opacity:.42; }
+.quiz-option:disabled { cursor:default; }
+.quiz-feedback { min-height:22px; margin:0; font-size:14px; font-weight:600; }
+.quiz-feedback.is-ok { color:var(--teal); }
+.quiz-feedback.is-bad { color:#c2410c; }
+.quiz-done { flex:1 1 auto; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; text-align:center; padding:16px 0 30px; }
+.quiz-done-score { margin:0; font-size:38px; font-weight:700; color:var(--ink); }
+.quiz-done-line { margin:0; font-size:15px; color:var(--ink); }
+.quiz-done-actions { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:12px; }
+/* 隐藏入口挂在「学生头像」的 ？ 上：长按/双击进小游戏。别弹系统选择菜单，也别让双击触发页面缩放 */
+[data-panel-help="data.avatar"] { position:relative; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; touch-action:manipulation; }
+[data-panel-help="data.avatar"]::after { content:''; position:absolute; inset:-10px; }
