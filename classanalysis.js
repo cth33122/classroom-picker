@@ -167,13 +167,22 @@ function renderClassAnalysis(){
   const seg=s.seg;
   const examLine=`${esc(focus.exam.name||'')}${focus.exam.date?`（${esc(focus.exam.date)}）`:''}`;
   const hasSegPeer=seg.classList.length>1;
+  const totalScore=Number(focus.exam.totalScore)||0;
+  // 差距图的场次与统一刻度（段均分当 0 线、班与班之间的标准差当尺子）
+  const gapEntries=classGapEntries(withData,CLASS_GAP_LIMIT);
+  const gapStats=gapEntries.length>=2?classGapStats(gapEntries):null;
+  const focusGap=gapStats?(gapStats.rows.find(r=>r.exam.id===focus.exam.id)||null):null;
   // 本班均分后面跟“和段均分的差”，正数绿色、负数红色
   const avgDiff=(s.avg!==null&&seg.avg!==null)?(s.avg-seg.avg):null;
   const avgDiffHtml=avgDiff===null?''
     :`<span class="class-kpi-diff ${avgDiff>=0?'is-up':'is-down'}">(${avgDiff>=0?'+':'-'}${Math.abs(avgDiff).toFixed(1)})</span>`;
+  // 第三张卡：这场和段均分相差几个 σ*，档位用文字写（持平 / 略 / 明显 / 突出）
   const kpis=[
     {label:'本班均分',value:classFix(s.avg),html:avgDiffHtml,hint:`满分 ${classFix(focus.exam.totalScore)}`},
     {label:'班均分排名',value:(s.rank&&hasSegPeer)?`第 ${s.rank} / ${s.classCount}`:'—',hint:hasSegPeer?`共 ${s.classCount} 个班`:'缺全年段数据'},
+    {label:'与段均分相差',
+      value:(focusGap&&focusGap.z!==null)?`${focusGap.d>=0?'+':'-'}${Math.abs(focusGap.z).toFixed(1)}σ`:'—',
+      hint:(focusGap&&focusGap.tier)?focusGap.tier.text:(hasSegPeer?'场次不足':'缺全年段数据')},
   ];
   const kpiHtml=kpis.map(k=>`<div class="class-kpi"><span class="class-kpi-label">${esc(k.label)}</span>\
 <strong class="class-kpi-value">${esc(k.value)}${k.html||''}</strong>${k.hint?`<span class="hint">${esc(k.hint)}</span>`:''}</div>`).join('');
@@ -195,7 +204,6 @@ ${barRow(`段后 ${cfg.bottomPercent}%`,s.bottom.count,s.bottom.share,cfg.bottom
 </div>\
 ${s.noRank?`<p class="hint">另有 ${s.noRank} 人有成绩但没有段次，没算进三段占比。</p>`:''}`;
   // 年段班级排名：这场考试每个班的平均得分率，从高到低，本班高亮
-  const totalScore=Number(focus.exam.totalScore)||0;
   const rateOf=avg=>(totalScore>0&&avg!==null&&avg!==undefined)?avg/totalScore:null;
   const segRate=rateOf(seg.avg);
   const rankRows=(seg.classList||[]).map(c=>{
@@ -247,6 +255,31 @@ ${seg.classList.length<2?'<p class="hint">库里只有本班的数据，导入�
 </div>\
 </div>`
     :`<div class="panel"><h3>段排名变化</h3><div class="empty">至少要有两次“多班对比”的考试，才能画出段排名的变化</div></div>`;
+  // 近 6 次“本班与段均分的差距”：段均分当 0 线，±1σ* 是“班与班之间的正常差距”（σ* 由这几场合并）
+  const gapNotes=[];
+  if(!hasSegPeer)gapNotes.push('库里只有本班数据，段均分和班间刻度都算不出来；导入全年段汇总表就能看到。');
+  const gapSkipped=withData.filter(x=>classRateOf(x.exam,x.slice.avg)===null).length;
+  if(gapSkipped)gapNotes.push(`有 ${gapSkipped} 场考试没填满分，算不出得分率，没画进这张图（在设置页补上考试总分即可）。`);
+  if(withData.length>CLASS_GAP_LIMIT)gapNotes.push(`共 ${withData.length} 场，这里只画最近 ${CLASS_GAP_LIMIT} 场；更早的看下面的逐场对比表。`);
+  const gapNoteHtml=gapNotes.map(t=>`<p class="hint">${esc(t)}</p>`).join('');
+  const gapPanel=(gapStats&&gapStats.rows.length>=2)
+    ?`<div class="panel" id="classGapPanel"><h3 class="with-help">近 ${gapStats.rows.length} 场：本班与段均分的差距 ${panelHelpBtn('class.gap','差距图的说明')}<span class="hint" id="classGapSigma">统一刻度 …</span></h3>\
+<div class="class-legend">\
+<span class="class-legend-item"><i class="is-me"></i>本班</span>\
+<span class="class-legend-item"><i class="is-zero"></i>段均分（0 线）</span>\
+<span class="class-legend-item"><i class="is-own"></i>本班常态</span>\
+<span class="class-legend-item"><i class="is-band2"></i>±1σ* 班间差距</span>\
+<span class="hint">纵轴：本班 − 段（百分点）</span>\
+</div>\
+<div class="class-chart-scroll" id="classGapScroll"><canvas id="classGapChart" class="class-chart-canvas" title="点一下看大图"></canvas></div>\
+<p class="hint" id="classGapSummary">${esc(classGapSummary(gapStats))}</p>\
+<div class="class-chart-actions">\
+<button type="button" class="secondary" id="viewClassGap">查看大图</button>\
+<button type="button" class="secondary" id="downloadClassGap">下载图片</button>\
+</div>\
+${gapNoteHtml}\
+</div>`
+    :`<div class="panel"><h3>与段均分的差距</h3><div class="empty">至少要有两场“多班对比”的考试，才能画出和段平均的差距</div></div>`;
   view.innerHTML=`<div class="panel grade-analysis-head-panel" id="classAnalysisHead">\
 <div class="grade-analysis-head">\
 <h2 class="with-help">班级分析 ${panelHelpBtn('class.analysis','班级分析的说明')}
@@ -261,6 +294,7 @@ ${backBtn}\
 ${bars}\
 </div>\
 ${rankLinePanel}\
+${gapPanel}\
 ${withData.some(x=>x.slice.rankedCount>0)?`<div class="panel"><h3 class="with-help">三段构成（最近 ${Math.min(CLASS_STACK_LIMIT,withData.length)} 场）${panelHelpBtn('class.stack','三段构成图的说明')}</h3>\
 <div class="class-legend">\
 <span class="class-legend-item"><i class="is-top"></i>段前 ${cfg.topPercent}%</span>\
@@ -284,6 +318,7 @@ ${paramPanel}`;
   classChartSeries=withData;
   drawClassStack($('#classTrend'),withData,cfg);
   drawClassRankLine($('#classRankLine'),withData);
+  drawClassGap($('#classGapChart'),withData);
   restoreClassAnalysisScroll();
 }
 
@@ -498,6 +533,205 @@ function drawClassRankLine(canvas,series,opts){
   if(hint)hint.style.display=(wrap.scrollWidth>wrap.clientWidth+2)?'':'none';
   return true;
 }
+// ---------- 差距图：本班与段均分的差 + “班与班之间”的标准差（统一刻度） ----------
+// 段均分画成 0 线，纵轴是「本班 − 段」（百分点，满分差异已经除掉）。
+// 尺子不是学生之间的离散，而是**各个班均分之间**的离散：每场先算 k 个班均分的样本标准差 s，
+// 再按自由度把几场合并成一把统一刻度 σ*，于是 z = 差距 / σ* 可以跨场比、也能说“差多少才算大”。
+// 学生之间的 σ（十分上下）大约是班间 σ（四五分）的两倍半，拿它当尺子会把真实差距压掉六成。
+const CLASS_GAP_LIMIT=6;
+const CLASS_GAP_SIGMA_FLOOR=0.015;   // σ* 下限 1.5 个百分点：班间几乎没差别时防止 z 爆炸
+const CLASS_GAP_MIN_SPAN=0.06;       // 纵轴最小跨度 6 个百分点，免得 1 分的波动画成断崖
+const CLASS_GAP_TIERS=[0.5,1,1.5];   // 持平 / 略 / 明显 / 突出 的分界（|z|）
+function classRateOf(exam,value){
+  const total=Number(exam&&exam.totalScore)||0;
+  return (total>0&&value!==null&&value!==undefined&&Number.isFinite(Number(value)))?Number(value)/total:null;
+}
+// 能画进差距图的场次：本班有均分、段里至少两个班、且这一场填了满分
+function classGapEntries(series,limit){
+  return (series||[]).filter(x=>{
+    if(!x.slice||x.slice.avg===null)return false;
+    if((x.slice.classCount||0)<2)return false;
+    const seg=x.slice.seg||{};
+    return classRateOf(x.exam,x.slice.avg)!==null&&classRateOf(x.exam,seg.avg)!==null;
+  }).slice(-(limit||CLASS_GAP_LIMIT));
+}
+function classGapTier(z){
+  if(z===null||z===undefined||!Number.isFinite(z))return null;
+  const a=Math.abs(z),t=CLASS_GAP_TIERS;
+  const idx=a<t[0]?0:a<t[1]?1:a<t[2]?2:3;
+  const up=z>0;
+  const words=up?['基本持平','略高于段平均','明显高于段平均','突出高于段平均']
+    :['基本持平','略低于段平均','明显低于段平均','突出低于段平均'];
+  return {idx,up,text:words[idx]};
+}
+// 每场的差距 d、场内班间标准差 s，以及合并出来的统一刻度 σ*
+function classGapStats(entries){
+  const rows=(entries||[]).map((x,i)=>{
+    const seg=x.slice.seg||{};
+    const me=classRateOf(x.exam,x.slice.avg);
+    const segRate=classRateOf(x.exam,seg.avg);
+    const rates=(seg.classList||[]).map(c=>classRateOf(x.exam,c.avg)).filter(v=>v!==null);
+    const k=rates.length;
+    const mean=k?rates.reduce((a,b)=>a+b,0)/k:null;
+    const s=k>1?Math.sqrt(rates.reduce((a,b)=>a+(b-mean)*(b-mean),0)/(k-1)):null;
+    return {i,exam:x.exam,slice:x.slice,me,seg:segRate,d:(me===null||segRate===null)?null:me-segRate,k,s};
+  });
+  const usable=rows.filter(r=>r.s!==null&&r.k>1);
+  const df=usable.reduce((a,r)=>a+(r.k-1),0);
+  const pooled=df>0?Math.sqrt(usable.reduce((a,r)=>a+(r.k-1)*r.s*r.s,0)/df):null;
+  const sigma=pooled===null?null:Math.max(CLASS_GAP_SIGMA_FLOOR,pooled);
+  rows.forEach(r=>{
+    r.z=(sigma&&r.d!==null)?r.d/sigma:null;
+    r.tier=classGapTier(r.z);
+  });
+  const gaps=rows.map(r=>r.d).filter(v=>v!==null);
+  const meanGap=gaps.length?gaps.reduce((a,b)=>a+b,0)/gaps.length:null;
+  return {rows,sigma,pooled,df,meanGap};
+}
+// 纵轴：差距、±1σ* 带、本班常态都收进来；刻度取 1 / 2 / 5 个百分点一档
+function classGapDomain(stats){
+  const pts=[0];
+  (stats.rows||[]).forEach(r=>{if(r.d!==null)pts.push(r.d);});
+  if(stats.sigma){pts.push(stats.sigma,-stats.sigma);}
+  if(stats.meanGap!==null)pts.push(stats.meanGap);
+  let lo=Math.min(...pts),hi=Math.max(...pts);
+  const pad=Math.max(0.01,(hi-lo)*0.14);
+  lo-=pad;hi+=pad;
+  if(hi-lo<CLASS_GAP_MIN_SPAN){const mid=(hi+lo)/2;lo=mid-CLASS_GAP_MIN_SPAN/2;hi=mid+CLASS_GAP_MIN_SPAN/2;}
+  let step=0.05;
+  for(const s of [0.01,0.02,0.05]){if((hi-lo)/s<=8){step=s;break;}}
+  return {lo,hi,step};
+}
+// 一句话总结，写在图下面
+function classGapSummary(stats){
+  const rows=((stats&&stats.rows)||[]).filter(r=>r.z!==null&&r.d!==null);
+  if(!rows.length)return '';
+  const up=rows.filter(r=>r.d>0).length;
+  const strong=rows.filter(r=>Math.abs(r.z)>=CLASS_GAP_TIERS[1]).length;
+  const flat=rows.filter(r=>Math.abs(r.z)<CLASS_GAP_TIERS[0])
+    .map(r=>String(r.exam.date||r.exam.name||'').slice(5)).filter(Boolean);
+  let text=`${rows.length} 场里 ${up} 场高于段平均`;
+  if(strong)text+=`，${strong} 场差距在 1σ* 以上`;
+  if(flat.length)text+=`；${flat.join('、')} 基本持平`;
+  return text+'。';
+}
+function paintClassGap(canvas,stats,opts){
+  const o=opts||{};
+  const entries=stats.rows||[];
+  const wrap=canvas.parentElement;
+  const avail=Math.max(240,o.forceWidth||(wrap?wrap.clientWidth:0)||(window.innerWidth||360)-40);
+  const cssW=avail;
+  const cssH=o.large?Math.max(300,Math.round(cssW*0.5)):Math.max(210,Math.round(cssW*0.66));
+  const dpr=Math.min(2,window.devicePixelRatio||1);
+  canvas.style.display='block';
+  canvas.style.width=cssW+'px';
+  canvas.style.height=cssH+'px';
+  canvas.width=Math.round(cssW*dpr);
+  canvas.height=Math.round(cssH*dpr);
+  const ctx=canvas.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,cssW,cssH);
+  const small=o.large?'12px system-ui,sans-serif':'11px system-ui,sans-serif';
+  const tiny=o.large?'11px system-ui,sans-serif':'10px system-ui,sans-serif';
+  const pad={top:o.large?46:40,right:o.large?40:26,bottom:o.large?46:40,left:o.large?54:44};
+  const plotW=Math.max(40,cssW-pad.left-pad.right),plotH=Math.max(60,cssH-pad.top-pad.bottom);
+  const domain=classGapDomain(stats);
+  const n=entries.length;
+  const x=i=>pad.left+(n===1?plotW/2:i*plotW/(n-1));
+  const y=v=>pad.top+(domain.hi-Math.max(domain.lo,Math.min(domain.hi,v)))/((domain.hi-domain.lo)||1)*plotH;
+  const blue='#1d4ed8',blueDark='#1e3a8a',muted='#6b7c78';
+  const bandFill='rgba(29,78,216,0.07)',zeroLine='#33534d';
+  const sigma=stats.sigma;
+  const fmt=v=>`${v>=0?'+':'-'}${(Math.abs(v)*100).toFixed(1)}`;
+  // 1) ±1σ* 浅带（段里的“正常差距”）+ 上下沿细线
+  if(sigma){
+    const top=y(sigma),bottom=y(-sigma);
+    ctx.fillStyle=bandFill;
+    ctx.fillRect(pad.left,top,plotW,bottom-top);
+    ctx.strokeStyle='rgba(29,78,216,0.22)';ctx.lineWidth=1;
+    [top,bottom].forEach(yy=>{ctx.beginPath();ctx.moveTo(pad.left,yy);ctx.lineTo(pad.left+plotW,yy);ctx.stroke();});
+  }
+  // 2) 横网格 + 百分点刻度（刻度落在 step 的整数倍上，但纵轴不必从整数倍开始）
+  ctx.font=small;ctx.textAlign='right';
+  const firstTick=Math.ceil(domain.lo/domain.step-1e-9)*domain.step;
+  for(let v=firstTick;v<=domain.hi+1e-9;v+=domain.step){
+    const yy=y(v);
+    ctx.strokeStyle='#eef2f1';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(pad.left,yy);ctx.lineTo(pad.left+plotW,yy);ctx.stroke();
+    ctx.fillStyle=muted;
+    ctx.fillText(`${v>1e-9?'+':''}${Math.round(v*100)}`,pad.left-6,yy+4);
+  }
+  // 3) 0 线＝段均分（标准线）
+  const zero=y(0);
+  ctx.strokeStyle=zeroLine;ctx.lineWidth=1.6;
+  ctx.beginPath();ctx.moveTo(pad.left,zero);ctx.lineTo(pad.left+plotW,zero);ctx.stroke();
+  // 4) 本班常态（这几场差距的平均）
+  if(stats.meanGap!==null){
+    const yy=y(stats.meanGap);
+    ctx.save();ctx.strokeStyle=muted;ctx.lineWidth=1.4;ctx.setLineDash([6,4]);
+    ctx.beginPath();ctx.moveTo(pad.left,yy);ctx.lineTo(pad.left+plotW,yy);ctx.stroke();
+    ctx.restore();
+  }
+  // 6) 本班折线 + 点 + 数值
+  const run=entries.filter(r=>r.d!==null);
+  if(run.length>1){
+    ctx.save();ctx.strokeStyle=blue;ctx.lineWidth=2.6;
+    ctx.beginPath();
+    run.forEach((r,idx)=>{const px=x(r.i),py=y(r.d);idx?ctx.lineTo(px,py):ctx.moveTo(px,py);});
+    ctx.stroke();ctx.restore();
+  }
+  ctx.font=small;
+  run.forEach(r=>{
+    const px=x(r.i),py=y(r.d);
+    ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(px,py,4,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle=blue;ctx.lineWidth=2.2;ctx.stroke();
+    const text=o.large?`${fmt(r.d)}（${r.z===null?'—':(r.z>=0?'+':'')+r.z.toFixed(1)+'σ'}）`:fmt(r.d);
+    const w=ctx.measureText(text).width;
+    const tx=Math.min(pad.left+plotW-w/2-2,Math.max(pad.left+w/2+2,px));
+    const above=py-pad.top>26;
+    const ty=above?py-10:py+18;
+    // 数值下面垫一块半透明白，免得和 0 线、带子边线、常态虚线糊在一起
+    ctx.fillStyle='rgba(255,255,255,0.86)';
+    ctx.fillRect(tx-w/2-2,ty-12,w+4,16);
+    ctx.fillStyle=blueDark;ctx.textAlign='center';
+    ctx.fillText(text,tx,ty);
+  });
+  // 7) x 轴：日期 + 考试名
+  entries.forEach((r,i)=>{
+    const px=x(i),raw=String(r.exam.date||'');
+    ctx.font=small;ctx.textAlign='center';ctx.fillStyle=muted;
+    ctx.fillText(raw.length>=10?raw.slice(5):raw,px,cssH-(o.large?26:22));
+    ctx.font=tiny;ctx.fillStyle='#93a5a1';
+    ctx.fillText(String(r.exam.name||'').replace(/[-—]?\d{4}[-—]?\d{2}[-—]?\d{2}$/,'').slice(0,o.large?12:6),px,cssH-(o.large?9:8));
+  });
+  // 8) 图内图例：单独下载的 PNG 也要能自解释
+  let lx=pad.left;
+  const ly=pad.top-16;
+  ctx.font=tiny;ctx.textAlign='left';
+  const legend=(paint,text)=>{
+    paint(lx);
+    ctx.fillStyle=muted;ctx.fillText(text,lx+20,ly+3);
+    lx+=20+ctx.measureText(text).width+16;
+  };
+  legend(px=>{ctx.save();ctx.strokeStyle=blue;ctx.lineWidth=2.6;ctx.beginPath();ctx.moveTo(px,ly);ctx.lineTo(px+14,ly);ctx.stroke();ctx.restore();},'本班');
+  legend(px=>{ctx.save();ctx.strokeStyle=zeroLine;ctx.lineWidth=1.6;ctx.beginPath();ctx.moveTo(px,ly);ctx.lineTo(px+14,ly);ctx.stroke();ctx.restore();},'段均分');
+  legend(px=>{ctx.save();ctx.strokeStyle=muted;ctx.lineWidth=1.4;ctx.setLineDash([5,3]);ctx.beginPath();ctx.moveTo(px,ly);ctx.lineTo(px+14,ly);ctx.stroke();ctx.restore();},'常态');
+  if(sigma)legend(px=>{ctx.fillStyle=bandFill;ctx.fillRect(px,ly-5,14,10);ctx.strokeStyle='rgba(29,78,216,0.35)';ctx.lineWidth=1;ctx.strokeRect(px,ly-5,14,10);},'±1σ*');
+  return {cssW,cssH,domain,sigma};
+}
+function drawClassGap(canvas,series,opts){
+  if(!canvas)return false;
+  const entries=classGapEntries(series,(opts&&opts.limit)||CLASS_GAP_LIMIT);
+  if(entries.length<2){canvas.style.display='none';return false;}
+  const stats=classGapStats(entries);
+  if(stats.sigma===null){canvas.style.display='none';return false;}
+  const out=paintClassGap(canvas,stats,opts||{});
+  const label=$('#classGapSigma');
+  if(label)label.textContent=`统一刻度 σ* ${classFix(stats.sigma*100,1)} 分 · 由这 ${entries.length} 场算出`;
+  const wrap=canvas.parentElement,hint=wrap?wrap.parentElement.querySelector('.class-chart-swipe'):null;
+  if(hint)hint.style.display=(wrap.scrollWidth>wrap.clientWidth+2)?'':'none';
+  return true;
+}
 function downloadCanvasPng(canvas,filename){
   if(!canvas)return;
   try{
@@ -508,15 +742,21 @@ function downloadCanvasPng(canvas,filename){
     toast('图片已下载');
   }catch(err){toast('下载失败：'+((err&&err.message)||'未知错误'));}
 }
-// 点图看大图（大图里可以下载）；kind: 'stack' 三段构成 / 'rank' 段排名折线
+// 点图看大图（大图里可以下载）；kind: 'stack' 三段构成 / 'rank' 段排名折线 / 'gap' 与段均分的差距
 function openClassChartLarge(kind){
   const cfg=classAnalysisConfig(state.settings);
   const cls=state.currentClass?normalizeClassName(state.currentClass):'';
   const isRank=kind==='rank';
+  const isGap=kind==='gap';
   const series=classAnalysisSeries(cls,cfg);
-  const entries=isRank?classRankEntries(series,CLASS_RANK_LINE_LIMIT):classStackEntries(series,CLASS_STACK_LIMIT);
-  if(!entries.length){toast(isRank?'至少要有两次多班对比的考试才能看段排名变化':'这些考试都没有段次，画不出三段构成');return;}
-  const title=isRank?`段排名变化 ${esc(cls)}`:`三段构成 ${esc(cls)}`;
+  const entries=isRank?classRankEntries(series,CLASS_RANK_LINE_LIMIT)
+    :(isGap?classGapEntries(series,CLASS_GAP_LIMIT):classStackEntries(series,CLASS_STACK_LIMIT));
+  if(!entries.length){
+    toast(isRank?'至少要有两次多班对比的考试才能看段排名变化':(isGap?'至少要有两场“多班对比”的考试才能看差距':'这些考试都没有段次，画不出三段构成'));
+    return;
+  }
+  if(isGap&&entries.length<2){toast('至少要有两场“多班对比”的考试才能看差距');return;}
+  const title=isRank?`段排名变化 ${esc(cls)}`:(isGap?`与段均分的差距 ${esc(cls)}`:`三段构成 ${esc(cls)}`);
   document.getElementById('classChartModal')?.remove();
   const modal=document.createElement('div');
   modal.id='classChartModal';modal.className='modal-backdrop';
@@ -533,10 +773,11 @@ function openClassChartLarge(kind){
   modal.querySelector('.modal-close').onclick=close;
   modal.onclick=e=>{if(e.target===modal)close();};
   const canvas=modal.querySelector('#classChartLarge');
-  const width=Math.max(640,Math.min(1500,Math.max((window.innerWidth||0)-80,isRank?640:entries.length*CLASS_BAR_MIN_LARGE+80)));
+  const width=Math.max(640,Math.min(1500,Math.max((window.innerWidth||0)-80,(isRank||isGap)?640:entries.length*CLASS_BAR_MIN_LARGE+80)));
   if(isRank)paintClassRankLine(canvas,entries,{large:true,forceWidth:width});
+  else if(isGap)paintClassGap(canvas,classGapStats(entries),{large:true,forceWidth:width});
   else paintClassStack(canvas,entries,cfg,{large:true,forceWidth:width});
-  const name=isRank?'段排名变化':'三段构成';
+  const name=isRank?'段排名变化':(isGap?'与段均分的差距':'三段构成');
   modal.querySelector('#downloadClassChartLarge').onclick=()=>downloadCanvasPng(canvas,`${name}-${cls||'班级'}-${localDate()}.png`);
   modal.querySelector('#closeClassChartLarge').onclick=close;
 }
@@ -576,6 +817,13 @@ function bindClassAnalysisActions(){
   if(viewRank)viewRank.onclick=()=>openClassChartLarge('rank');
   const downloadRank=$('#downloadClassRankLine');
   if(downloadRank)downloadRank.onclick=()=>downloadCanvasPng($('#classRankLine'),`段排名变化-${state.currentClass||'班级'}-${localDate()}.png`);
+  // 差距图：同样的交互
+  const gapChart=$('#classGapChart');
+  if(gapChart)gapChart.onclick=()=>openClassChartLarge('gap');
+  const viewGap=$('#viewClassGap');
+  if(viewGap)viewGap.onclick=()=>openClassChartLarge('gap');
+  const downloadGap=$('#downloadClassGap');
+  if(downloadGap)downloadGap.onclick=()=>downloadCanvasPng($('#classGapChart'),`与段均分的差距-${state.currentClass||'班级'}-${localDate()}.png`);
   bindPanelHelp();
 }
 // 屏幕上图要重画：转屏/改窗口大小时按新宽度重新排柱子（宽了就出现横向滑动）
@@ -586,6 +834,8 @@ window.addEventListener('resize',()=>{
   if(canvas)drawClassStack(canvas,classChartSeries,classAnalysisConfig(state.settings));
   const rankCanvas=$('#classRankLine');
   if(rankCanvas)drawClassRankLine(rankCanvas,classChartSeries);
+  const gapCanvas=$('#classGapChart');
+  if(gapCanvas)drawClassGap(gapCanvas,classChartSeries);
 });
 
 function openClassAnalysis(fromStudentId){
@@ -678,6 +928,22 @@ registerPanelHelp('class.rankline','段排名变化',
 <p>点旁边写的是“第M / N个班”，N 是那场考试有成绩的班级数——N 变了（比如某场少了几个班）时，光看名次容易误判，可以对照点数一起看。</p>\
 <p><strong>只画“多班对比”的场次</strong>：只导入了本班数据、或那一场库里只有一个班的，算不出段排名，不会出现在这条线上（所以点数可能少于 6 个）。点数是按时间从左到右排的，只取最近 ${CLASS_RANK_LINE_LIMIT} 个有排名的场次。</p>\
 <p><strong>看图操作</strong>：点图或点“查看大图”放大看，大图里点“下载图片”存 PNG；图宽超出屏幕时可以直接左右滑动。</p>`);
+
+registerPanelHelp('class.gap','与段均分的差距',
+  () => `<p><strong>这条线回答的是“本班比段平均高多少、这个高算不算大”</strong>：纵轴是本班均分减去段均分（都换算成<strong>得分率</strong>，单位是百分点），所以<strong>中间那条深色横线（0 线）就是段均分</strong>；线在上面＝高于段平均，在下面＝低于。取最近 ${CLASS_GAP_LIMIT} 场，从左到右由早到晚。</p>\
+<p><strong>为什么用得分率</strong>：不同场次满分可能不一样（这项数据里就有 100 分和 150 分的场次）。原始分直接减，会画出 96 分掉到 76 分、又蹦到 109 分这种“假暴跌假暴涨”，其实只是换了满分。</p>\
+<p><strong>那条浅带是什么（关键）</strong>：尺子不是“学生之间差多少”，而是<strong>“班与班之间差多少”</strong>。做法是：每一场先算出全段各班均分的标准差 s（衡量这一场的班与班之间差多少），再把这几场按班数加权合并成一把统一刻度 σ*（标题右边写着具体数值）。浅带就是 <strong>±1σ*</strong>。为什么要统一：单算一场时只有十几个班，s 本身会有 ±18% 的抖动，每场换一把尺子，z 就跟着尺子乱跳；合并后抖动降到 ±7%，不同场次才能直接比。</p>\
+<p>带子为什么不用“学生之间的标准差”：学生之间的 σ 大约是十分上下，班与班之间只有四五分，差两倍半。用学生 σ 当尺子，会把真实差距压掉六成（领先 6.6 分只画成 0.6σ），看不出“这个班是不是真的比段平均强”。</p>\
+<p><strong>怎么读</strong>：线落在带子里＝差距还在“班与班的正常差距”之内；<strong>穿出带子的上沿/下沿</strong>＝明显高于/低于段平均。换算成 z（差距 ÷ σ*）后是这样分档的：<br>\
+· |z| &lt; ${CLASS_GAP_TIERS[0]}：<strong>基本持平</strong>；<br>\
+· ${CLASS_GAP_TIERS[0]}–${CLASS_GAP_TIERS[1]}：<strong>略高/略低</strong>；<br>\
+· ${CLASS_GAP_TIERS[1]}–${CLASS_GAP_TIERS[2]}：<strong>明显</strong>；<br>\
+· ≥ ${CLASS_GAP_TIERS[2]}：<strong>很突出</strong>（16 个班时大约是前 1–2 名 / 后 1–2 名）。</p>\
+<p><strong>灰虚线“本班常态”</strong>是这几场差距的平均值。它回答另一个问题：<strong>这一场相对自己的平常水平是高是低</strong>——点在这条线上面，就是“这场比平时更靠前”，哪怕它还在 1σ* 带子里面。</p>\
+<p><strong>两句提醒</strong>：① z 是“差距有多大”的描述，<strong>不是显著性检验</strong>，别写成“显著”；本班 50 人时几乎每一场都能通过 t 检验，那个结论对老师没用。② 在这些考试里，班与班之间的差距大约 <strong>84% 是稳定的</strong>（这个班一贯强/弱），只有 16% 是这场特有的起伏，所以这条线通常是“平的”，那是真实情况，不是图画错了。</p>\
+<p><strong>纵轴</strong>只取数据所在的那一小段（不铺满 0–100%），跨度不足 6 个百分点时会强制撑到 6 个点，避免把 1 分的正常差画成断崖；先看左边刻度一格是几分。</p>\
+<p><strong>缺数据</strong>：只导入了本班数据、或那一场只有一个班，画不出段均分和班间刻度，这场不会出现在图上；某场没填考试满分也算不出得分率，同样跳过（图下会提示）。</p>\
+<p><strong>看图操作</strong>：点图或点“查看大图”放大看，大图里点“下载图片”存 PNG。</p>`);
 
 registerPanelHelp('class.flow','学生分布详情',
   () => {

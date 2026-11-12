@@ -677,3 +677,9 @@ button.avatar:hover { border-color:var(--teal); }
 /* 隐藏入口挂在「学生头像」的 ？ 上：长按/双击进小游戏。别弹系统选择菜单，也别让双击触发页面缩放 */
 [data-panel-help="data.avatar"] { position:relative; -webkit-touch-callout:none; -webkit-user-select:none; user-select:none; touch-action:manipulation; }
 [data-panel-help="data.avatar"]::after { content:''; position:absolute; inset:-10px; }
+/* v253 班级分析：差距图（蓝＝本班，深色 0 线＝段均分，灰虚线＝本班常态，浅蓝带＝±1σ*） */
+.class-legend-item i.is-me { background:#1d4ed8; }
+.class-legend-item i.is-zero { background:#33534d; }
+.class-legend-item i.is-own { background:#6b7c78; }
+.class-legend-item i.is-band2 { background:rgba(29,78,216,.12); border:1px solid rgba(29,78,216,.35); }
+.class-legend-item .hint { margin-left:2px; }
