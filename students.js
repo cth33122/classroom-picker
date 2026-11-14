@@ -7,7 +7,7 @@ const STUDENT_EXAM_PREVIEW=3;
 function studentRows(rows){
   if(!rows.length)return '<div class="empty">暂无学生</div>';
   const exams=orderedExams(),currentExam=exams.find(e=>e.id===state.studentCurrentExamId)||exams[0],previousExam=state.studentPreviousExamId?exams.find(e=>e.id===state.studentPreviousExamId):null,hasComparison=Boolean(previousExam&&currentExam&&previousExam.id!==currentExam.id),classStudents=state.students.filter(s=>!state.currentClass||s.className===state.currentClass),rankMap=averageRankMap(classStudents);
-  return sortedStudents(rows).map(s=>{const latest=examResult(currentExam,s),previous=examResult(previousExam,s),l=latest||{},display=l.displayName||s.displayName||s.name,avg=averageScoreRate(s),avgRank=rankMap.get(s.id);return `<div class="stat-row student-row" data-student-row="${esc(s.id)}">\
+  return sortedStudents(rows).map(s=>{const latest=examResult(currentExam,s),previous=examResult(previousExam,s),l=latest||{},display=l.displayName||s.displayName||s.name,avg=averageScoreRate(s),avgRank=rankMap.get(s.id),gNow=latest&&currentExam?segmentRankFor(currentExam.id,s.id,l.gradeRank):null,gPrev=previous&&previousExam?segmentRankFor(previousExam.id,s.id,previous.gradeRank):null;return `<div class="stat-row student-row" data-student-row="${esc(s.id)}">\
 <span class="student-main">\
 ${avatarHtml(s,{size:34})}\
 <span class="student-main-text">\
@@ -16,7 +16,7 @@ ${avatarHtml(s,{size:34})}\
 <small class="hint">${latest?`${l.score}分`:(exams.length?'缺考':'—')}</small>\
 </span>\
 </span>\
-<span class="rank-info">班次：${latest?(l.classRank??'—'):'—'} ${hasComparison&&latest?rankDelta(l.classRank,previous?.classRank):''}<br>段次：${latest?(l.gradeRank??'—'):'—'} ${hasComparison&&latest?rankDelta(l.gradeRank,previous?.gradeRank):''}</span>\
+<span class="rank-info">班次：${latest?(l.classRank??'—'):'—'} ${hasComparison&&latest?rankDelta(l.classRank,previous?.classRank):''}<br>段次：${gNow??'—'} ${hasComparison&&gNow?rankDelta(gNow,gPrev):''}</span>\
 <span class="average-info">\
 <strong>${avg===null?'—':`${(avg*100).toFixed(1)}%`}</strong>\
 <small>班排名：${avgRank??'—'}</small>\
@@ -26,7 +26,7 @@ ${avatarHtml(s,{size:34})}\
 }
 
 function renderStudentDetail(id){
-  const s=state.students.find(x=>x.id===id);if(!s){state.studentDetail=null;renderStudents();return;}const records=chronologicalExams().map(e=>({exam:e,result:examResult(e,s)})).filter(x=>x.result),maxClass=Math.max(...state.examResults.map(x=>rankNumber(x.result?.classRank)||0),1),maxGrade=Math.max(...state.examResults.map(x=>rankNumber(x.result?.gradeRank)||0),1),current=records[records.length-1]?.result,display=current?.displayName||s.displayName||s.name;
+  const s=state.students.find(x=>x.id===id);if(!s){state.studentDetail=null;renderStudents();return;}const records=chronologicalExams().map(e=>({exam:e,result:examResult(e,s)})).filter(x=>x.result),maxClass=Math.max(...state.examResults.map(x=>rankNumber(x.result?.classRank)||0),1),maxGrade=Math.max(1,...chronologicalExams().map(e=>(typeof segmentRanks==='function'?segmentRanks(e.id).size:0)||0)),current=records[records.length-1]?.result,display=current?.displayName||s.displayName||s.name;
   // 考试记录：默认从新到旧，最多列 STUDENT_EXAM_PREVIEW 条，可展开；成绩趋势固定取最近 5 次并按时间从旧到新
   const examRows=[...records].reverse();
   const shownExams=state.studentExamExpand?examRows:examRows.slice(0,STUDENT_EXAM_PREVIEW);
@@ -73,7 +73,7 @@ ${noteBadge(s)}\
 </span>\
 <span class="rank-cell">\
 <span style="background:${rankColor(Number(x.result.classRank)||maxClass,maxClass)}" class="rank-chip">班 ${x.result.classRank??'—'}</span>\
-<span style="background:${rankColor(Number(x.result.gradeRank)||maxGrade,maxGrade)}" class="rank-chip">段 ${x.result.gradeRank??'—'}</span>\
+<span style="background:${rankColor(segmentRankFor(x.exam.id,s.id,x.result.gradeRank)||maxGrade,maxGrade)}" class="rank-chip">段 ${segmentRankFor(x.exam.id,s.id,x.result.gradeRank)??'—'}</span>\
 </span>\
 </div>`).join(''):'<div class="empty">暂无考试记录</div>'}\
 ${examRows.length>STUDENT_EXAM_PREVIEW?`<div class="actions"><button class="secondary" id="toggleExamList">${state.studentExamExpand?'收起考试记录':`查看更多考试（共 ${examRows.length} 次）`}</button></div>`:''}\
@@ -311,7 +311,7 @@ function studentSortValue(student){
   const exams=orderedExams(), current=exams.find(e=>e.id===state.studentCurrentExamId)||exams[0], previous=exams.find(e=>e.id===state.studentPreviousExamId)||exams[1];
   if(state.studentSort.startsWith('score'))return Number(examResult(current,student)?.score??-1);
   if(state.studentSort.startsWith('average'))return Number(averageScoreRate(student)??-1);
-  if(state.studentSort.startsWith('rank')){const now=rankNumber(examResult(current,student)?.gradeRank),old=rankNumber(examResult(previous,student)?.gradeRank);return now===null||old===null?null:old-now;}
+  if(state.studentSort.startsWith('rank')){const rNow=examResult(current,student),rOld=examResult(previous,student),now=rNow?segmentRankFor(current.id,student.id,rNow.gradeRank):null,old=rOld?segmentRankFor(previous.id,student.id,rOld.gradeRank):null;return now===null||old===null?null:old-now;}
   return String(student.name||'');
 }
 

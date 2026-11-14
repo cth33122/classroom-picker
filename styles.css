@@ -683,3 +683,8 @@ button.avatar:hover { border-color:var(--teal); }
 .class-legend-item i.is-own { background:#6b7c78; }
 .class-legend-item i.is-band2 { background:rgba(29,78,216,.12); border:1px solid rgba(29,78,216,.35); }
 .class-legend-item .hint { margin-left:2px; }
+/* v256 段排名参照池：设置页的班级开关 + 分析页的口径提示 */
+.pool-chips { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 8px; }
+.pool-chip { min-height:0; padding:5px 10px; font-size:13px; border:1px solid var(--line); border-radius:999px; background:var(--paper); color:var(--ink); }
+.pool-chip.is-off { background:#fde8e6; border-color:#e7a79f; color:#a33a2c; text-decoration:line-through; }
+.pool-badge { margin:2px 0 0; padding:6px 8px; border-left:3px solid #d97706; background:rgba(217,119,6,.08); border-radius:4px; }

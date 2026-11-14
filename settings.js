@@ -5,6 +5,12 @@ registerPanelHelp('settings.params','点名参数',
   `<p>改动<strong>立即生效并自动保存</strong>，无需再点保存。</p>\
 <p>“近期点名次数统计规则”这一项旁边也有个问号，点开是它自己的说明（统计什么、影响什么、怎么选）。</p>\
 <p>点“更多参数”可以看到衰减、恢复、关注加权等进阶数值，改坏了可以“恢复默认”。</p>`);
+registerPanelHelp('settings.pool','段排名参照池',
+  () => `<p><strong>为什么要有这个</strong>：有些重点班平时不参加考试，只在期中、期末这类大考里加进来一起排名。文件里的“校次”是按<strong>混合池</strong>算的——强班的学生插在前面，你班所有人的名次会一起后移。实测（16 个班 780 人，加入 4 个班约 200 人、均分高 15 分）：段排位中位数从 45% 涨到 54%，班排名从 6/17 掉到 10/21，段前 15% 的人数从 11 人变成 4 人——看着像退步，其实一点没变。</p>\
+<p><strong>怎么用</strong>：点一下班级＝把它标成“不参与段排名”（再点一下取消）。标掉的班不算进段均分、班排名、三段占比、段排名折线和差距图的 σ*。<strong>默认一个都不排除</strong>，所以你不动它就和以前完全一样。</p>\
+<p><strong>名次是重算的</strong>：每场只取池内、有成绩的学生，按分数重排名次（并列同名次、后面跳号）。这套规则和学校校次的口径一致——在你给的全年段表上逐条核对过，778 人 0 处差异。所以平时那些<strong>没有“校次”列</strong>的练习，现在也能算出段排位、进趋势了。</p>\
+<p><strong>双口径</strong>：原始文件里的校次没删也没改。「逐场对比」的班排名会写成“平行班 6/17（全段 10/21）”，两边都看得到；真正参与判断（下降/进步、三段、差距图）的是平行班口径。</p>\
+<p><strong>注意</strong>：改这个设置会让已有分析结果整体重算（成绩分析的下降/进步标签会变），这是预期行为，原始成绩一条都不会动。本班自己不要排除，否则页面顶部会提示“本班在参照池外”。</p>`);
 registerPanelHelp('settings.identity','数据身份',
   `<p><strong>身份编号（uid）</strong>：每位学生都有一个软件内置、永不变的编号，点名历史、评价、问题、头像、成绩都挂在它上面。所以以后分班、改班级名、改姓名，这些数据都会跟着学生走，不会丢。</p>\
 <p>面板里那一行小字就是当前状态（只读）。</p>\
@@ -242,6 +248,12 @@ function renderSettings(){  const s=state.settings,historyOptions=HISTORY_RULE_O
 <p class="hint">段次落在前 ${s.classTopPct||CLASS_ANALYSIS_DEFAULTS.topPct}% 的算“段前”，落在后 ${s.classBottomPct||CLASS_ANALYSIS_DEFAULTS.bottomPct}% 的算“段后”。改完到“学生”页点“班级分析”即可看到结果，也可以直接在那个页面顶部改。</p>\
 </div>\
 <div class="panel">\
+<h2 class="with-help">段排名参照池 ${panelHelpBtn('settings.pool','段排名参照池的说明')}</h2>\
+<p class="hint">点一下班级＝把它标成“不参与段排名”（一般是平时不一起考、只在期中期末加入的重点班）。标掉的班不算进段均分、班排名、三段占比和差距图的 σ*；文件里的原始校次仍然保留，「逐场对比」里会同时写“全段”名次。</p>\
+<div class="pool-chips">${classes().map(c=>`<button type="button" class="pool-chip${(s.poolExclude||[]).includes(c)?' is-off':''}" data-pool-class="${esc(c)}" aria-pressed="${(s.poolExclude||[]).includes(c)}">${esc(c)}</button>`).join('')||'<span class="hint">还没有导入班级</span>'}</div>\
+<p class="hint">${(s.poolExclude||[]).length?`当前排除：${(s.poolExclude||[]).map(esc).join('、')}（段里还剩 ${Math.max(0,classes().length-(s.poolExclude||[]).length)} 个班）`:'当前：全部班级都参与段排名（默认）'}</p>\
+</div>\
+<div class="panel">\
 <h2>快捷班级</h2>\
 <div class="shortcut-editor">\
 <input id="shortcutClasses" value="${esc((s.shortcutClasses||[]).join(','))}" placeholder="01,02,10">\
@@ -263,6 +275,20 @@ ${aliasPanelHtml()}\
 <p class="hint app-version">当前版本：${APP_VERSION}</p>`;
     
   $$('[data-setting],[data-diff]').forEach(el=>el.addEventListener('change',()=>applySettingEdit(el)));
+  // 段排名参照池：点班级＝切换“是否参与段排名”，立即存本机并清掉段缓存
+  $$('#view-settings [data-pool-class]').forEach(b=>b.onclick=async()=>{
+    const name=normalizeClassName(b.dataset.poolClass);
+    const list=(state.settings.poolExclude||[]).filter(c=>c!==name);
+    const excluded=(state.settings.poolExclude||[]).includes(name);
+    if(!excluded)list.push(name);
+    state.settings=mergeConfig({...state.settings,poolExclude:list});
+    try{ await DB.put({id:'main',...state.settings}); }
+    catch(err){ toast(`没能保存：${err.message}`); return; }
+    clearGradeAnalysisCache();
+    clearSegmentCache();
+    renderSettings();
+    toast(excluded?`${name} 已回到段排名`:`${name} 不参与段排名（段里剩 ${Math.max(0,classes().length-(state.settings.poolExclude||[]).length)} 个班）`);
+  });
   bindPanelHelp();
   // 备选编号的折叠块：记住展开状态与滚动位置（重绘后保持展开，不会“删一条就收起来”）
   const aliasFold=$('#view-settings .alias-fold');

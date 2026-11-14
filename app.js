@@ -1,7 +1,7 @@
 // 入口：视图分发、数据加载、service worker 注册
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v254';
+const APP_VERSION = 'v256';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -216,6 +216,14 @@ function backHandleLayer(){
   }
   return false;
 }
+// 二级页（统计页）左上角“返回”：和硬件返回键走同一条路——先把返回栈弹掉再跳，
+// 免得栈里留下重复条目、按返回键又弹回统计页。不是从栈里进来的（例如横向滑过来）就回栈顶那一页。
+function backToPreviousView(){
+  if(backViewStack.length>1&&backCurrentView()===state.view)backViewStack.pop();
+  const target=backCurrentView();
+  backLog('返回按钮 → '+target);
+  goToView(target||BACK_ROOT);
+}
 function initBackGuard(){
   if(!window.navigation||typeof window.navigation.addEventListener!=='function'){
     backLog('没有 Navigation API（非 HTTPS/localhost），不接管返回键');
@@ -278,6 +286,8 @@ async function reload(){
   }catch(err){console.warn('身份补齐失败（不影响使用）：',err);}
   for(const exam of state.exams){const storedTotal=Number(exam.totalScore);if(Number.isFinite(storedTotal)&&storedTotal>100)continue;const max=Math.max(...state.examResults.filter(r=>r.examId===exam.id).map(r=>Number(r.result?.score)||0),0);if(max>100){exam.totalScore=[120,150,160,180,200].find(n=>max<=n)||Math.ceil(max/10)*10;await DB.put('exams',exam);}}
   state.settings=mergeConfig(await DB.getSettings());
+  // 成绩/考试数据刚换过，段排名的缓存必须跟着清（否则参照池里的旧名次会留在内存里）
+  if(typeof clearSegmentCache==='function')clearSegmentCache();
   // 恢复上次选择的班级（失效时退回第一个班级）
   const meta=await DB.all('meta');
   state.identity=meta.find(x=>x&&x.id==='identity')||null;   // 设置页“数据身份”那行只读状态

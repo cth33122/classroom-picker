@@ -35,18 +35,26 @@ function gradeStatusConfig(saved){
   };
 }
 
-// 当场“段人数”：用该场最大的段排名（实测 772–788，比“记录条数”稳：缺考的人不占名次）
+// 当场“段人数”：参照池里的人数（v256，见 segment.js）。
+// 默认池＝全部班，数值与原来的“最大段次”一致；排除了重点班后只数池内学生，
+// 段排位才能跨场比较（重点班临时加入的那场不会把所有人的名次一起推后）。
 const examSegSizeCache=new Map();
 function examSegSize(examId){
   if(examSegSizeCache.has(examId))return examSegSizeCache.get(examId);
-  let max=0;
-  (state.examResults||[]).forEach(r=>{
-    if(!r||r.examId!==examId)return;
-    const n=rankNumber(r.result&&r.result.gradeRank);
-    if(n>max)max=n;
-  });
-  examSegSizeCache.set(examId,max);
-  return max;
+  let size=0;
+  if(typeof segmentRanks==='function')size=segmentRanks(examId).size;
+  if(!size){
+    // 兜底：参照池模块不可用时，沿用旧口径（该场最大段次）
+    let max=0;
+    (state.examResults||[]).forEach(r=>{
+      if(!r||r.examId!==examId)return;
+      const n=rankNumber(r.result&&r.result.gradeRank);
+      if(n>max)max=n;
+    });
+    size=max;
+  }
+  examSegSizeCache.set(examId,size);
+  return size;
 }
 // 某场考试里每个班有成绩的人数（用于班内百分位）
 const examClassSizeCache=new Map();
@@ -66,7 +74,7 @@ function examClassSize(examId,className){
   examClassSizeCache.set(key,counts[className]||0);
   return counts[className]||0;
 }
-function clearGradeAnalysisCache(){examSegSizeCache.clear();examClassSizeCache.clear();}
+function clearGradeAnalysisCache(){examSegSizeCache.clear();examClassSizeCache.clear();if(typeof clearSegmentCache==='function')clearSegmentCache();}
 
 // 一个学生的成绩序列（按考试日期正序）：只保留他有成绩记录的场次，缺考标记出来但不参与计算
 function buildGradeSeries(student){
@@ -78,7 +86,9 @@ function buildGradeSeries(student){
     const score=Number(result.score);
     const valid=Number.isFinite(score)&&score>0;
     const segSize=examSegSize(exam.id);
-    const gradeRank=rankNumber(result.gradeRank);
+    // 段次优先用参照池里的重算值；池外的学生（例如本班被排除）退回文件里的校次
+    const poolRank=(typeof segmentRankOf==='function')?segmentRankOf(exam.id,student.id):0;
+    const gradeRank=poolRank||rankNumber(result.gradeRank);
     const classRank=rankNumber(result.classRank);
     const clsSize=valid?examClassSize(exam.id,student.className):0;
     out.push({
@@ -307,12 +317,17 @@ ${list.map(r=>gradeRowHtml(r,config,sparkDomain)).join('')}\
   // 状态标签横排一行（放不下就左右滑），同时也是“跳到对应分组”的按钮
   const jumps=groupKeys.map(key=>`<button type="button" class="grade-jump" data-grade-jump="${key}" title="跳到「${esc(GRADE_STATUS_META[key].label)}」">${gradeChip(key)}<b>${counts[key]}</b></button>`).join('');
   const scope=state.currentClass?` · ${esc(state.currentClass)}`:'';
+  const poolExcludedList=(typeof segmentExcluded==='function')?[...segmentExcluded()]:[];
+  const poolNote=poolExcludedList.length
+    ?`<p class="hint pool-badge">段口径：平行班（已排除 ${poolExcludedList.map(esc).join('、')}）——段排位按池内重算，可能和原始文件的校次不同</p>`
+    :'';
   $('#view-students').innerHTML=`<div class="panel grade-analysis-head-panel" id="gradeAnalysisHead">\
 <div class="grade-analysis-head">\
 <h2 class="with-help">成绩分析 ${panelHelpBtn('grade.analysis','成绩分析的说明')}<span class="hint grade-total">全班 ${total} 人${scope}</span></h2>\
 <button type="button" class="secondary" id="gradeAnalysisBack">返回学生列表</button>\
 </div>\
 <div class="grade-chips" id="gradeChips">${jumps||'<span class="hint">还没有可分析的成绩</span>'}</div>\
+${poolNote}\
 </div>\
 <div class="panel" id="gradeAnalysisList">${groups||'<div class="empty">这个范围里还没有可分析的学生</div>'}</div>`;
   $('#gradeAnalysisBack').onclick=()=>closeGradeAnalysis();

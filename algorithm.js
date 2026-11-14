@@ -2,6 +2,8 @@
 const ALGORITHM_DEFAULTS = {
   configVersion: 5, candidateCount: 4,
   recentDecay: 0.58, recoveryPerCall: 0.12, focusBoost: 1.65, basisExamCount: 3, historyRule: 'twoMonths', sameDayRepeat: 'block', lowScorePercentile: 0.60, zeroRecentBoost: 1.5, shortcutClasses: [],
+  // 段排名参照池：这些班“不参与段排名”（一般是平时不一起考、只在期中期末加入的重点班）
+  poolExclude: [],
   // 班级分析的分段参数（百分数：15 = 段前 15%），阈值在“设置 → 班级分析”或班级分析页顶部改
   classTopPct: 15, classBottomPct: 20,
   difficulty: {
@@ -54,6 +56,10 @@ function mergeConfig(saved) {
   next.lowScorePercentile=Math.max(0,Math.min(1,numeric(next.lowScorePercentile,ALGORITHM_DEFAULTS.lowScorePercentile)));
   next.zeroRecentBoost=Math.max(0,numeric(next.zeroRecentBoost,ALGORITHM_DEFAULTS.zeroRecentBoost));
   next.shortcutClasses = Array.isArray(next.shortcutClasses) ? next.shortcutClasses : [];
+  // 段排名参照池：去重、规范成班级名；空数组合法（＝全部班都参与）
+  next.poolExclude = (Array.isArray(next.poolExclude) ? next.poolExclude : [])
+    .map(v => normalizeClassName(v))
+    .filter((v, i, a) => v && a.indexOf(v) === i);
   next.historyRule = ['calls20','calls30','calls50','week','twoWeeks','month','twoMonths','threeMonths','halfYear','all'].includes(String(next.historyRule)) ? String(next.historyRule) : 'twoMonths';
   next.sameDayRepeat = String(next.sameDayRepeat) === 'allow' ? 'allow' : 'block';
   // 班级分析：段前/段后百分比各自 2–50，且两者之和不超过 90（中间段要留一点）

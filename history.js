@@ -72,7 +72,17 @@ function renderHistory(){
 <span><button type="button" class="secondary row-btn" data-student-questions="${esc(s.id)}" title="查看该生的问题记录">详情</button></span>\
 </div>`).join(''):'<div class="empty">本班暂无学生</div>'}</div>`;
     
-  $('#view-history').innerHTML=`<div class="panel">${nav}${statsRow}</div>${body}`;
+  // 顶部标题栏：统计页不在底部导航里（入口是点名页的「点名统计」），所以这里必须有一个可见的返回键，
+  // 否则停在统计页时底部“点名”标签是被高亮的，看起来无路可回。
+  const headRow=`<div class="grade-analysis-head">\
+<h2>点名统计<span class="hint grade-total">${esc(state.currentClass||'')}</span></h2>\
+<button type="button" class="secondary" id="historyBackBtn">返回</button>\
+</div>`;
+  // 标题栏单独一条（sticky，滚动时返回键一直在），模式切换和统计范围放到下面那块面板里
+  $('#view-history').innerHTML=`<div class="panel grade-analysis-head-panel" id="historyHead">${headRow}</div>\
+<div class="panel">${nav}${statsRow}</div>${body}`;
+  const historyBack=$('#historyBackBtn');
+  if(historyBack)historyBack.onclick=()=>backToPreviousView();
   if(mode==='timeline')drawDifficultyPie(difficultyCounts);
     $('#historyFilter').onchange=e=>{state.historyFilter=e.target.value;renderHistory();};
     $('#timelineBtn').onclick=()=>{state.statsMode='timeline';state.historySort={key:'at',direction:'desc'};renderHistory();};

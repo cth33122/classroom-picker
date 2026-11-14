@@ -16,33 +16,45 @@ function classAnalysisConfig(saved){
   return {topPercent:topPct,bottomPercent:bottomPct,topPct:topPct/100,bottomPct:bottomPct/100};
 }
 
-// 一场考试里整个段的账：段人数、段均分、每个班的均分与名次（均分相同算并列）
-function examGradeBoard(examId){
-  const seg={count:0,sum:0,segSize:0,avg:null,classList:[],byClass:new Map()};
-  const classes=new Map();
+// 原始文件口径（这场文件里出现的所有班，含被排除的重点班）：只用来做“全段”对照
+function examGradeBoardRaw(examId){
+  const rows=[];
   (state.examResults||[]).forEach(r=>{
     if(!r||r.examId!==examId)return;
     const result=r.result||{};
-    const rank=rankNumber(result.gradeRank);
-    if(rank>seg.segSize)seg.segSize=rank;
     const score=Number(result.score);
     if(!(Number.isFinite(score)&&score>0))return;
-    const cls=normalizeClassName(result.className);
-    seg.count++;seg.sum+=score;
-    const box=classes.get(cls)||{className:cls,count:0,sum:0};
-    box.count++;box.sum+=score;classes.set(cls,box);
+    rows.push({cls:normalizeClassName(result.className),score});
   });
-  seg.avg=seg.count?seg.sum/seg.count:null;
-  const list=[...classes.values()].filter(c=>c.count).map(c=>({className:c.className,count:c.count,avg:c.sum/c.count}))
+  const boxes=new Map();
+  let sum=0;
+  rows.forEach(x=>{
+    sum+=x.score;
+    const box=boxes.get(x.cls)||{className:x.cls,count:0,sum:0};
+    box.count++;box.sum+=x.score;boxes.set(x.cls,box);
+  });
+  const classList=[...boxes.values()].map(c=>({className:c.className,count:c.count,avg:c.sum/c.count}))
     .sort((a,b)=>b.avg-a.avg||String(a.className).localeCompare(String(b.className),'zh-CN'));
-  let rank=0,prevAvg=null;
-  list.forEach((c,index)=>{
-    if(prevAvg===null||Math.abs(c.avg-prevAvg)>1e-9){rank=index+1;prevAvg=c.avg;}
+  let rank=0,prev=null;
+  classList.forEach((c,index)=>{
+    if(prev===null||Math.abs(c.avg-prev)>1e-9){rank=index+1;prev=c.avg;}
     c.rank=rank;
   });
-  seg.classList=list;
-  list.forEach(c=>seg.byClass.set(c.className,c));
-  return seg;
+  return {count:rows.length,sum,avg:rows.length?sum/rows.length:null,
+    classList,byClass:new Map(classList.map(c=>[c.className,c]))};
+}
+
+// 一场考试在“参照池”里的账：池内人数、段均分、每个班的均分与名次（均分相同算并列）
+// 池 = 全部班 − 设置里排除的重点班（见 segment.js）。排除后，重点班临时加入的场次不会把
+// 段均分抬高、把本班名次推后；原始文件口径另外存一份 raw，用于“全段 / 平行班”双口径显示。
+function examGradeBoard(examId){
+  const pool=segmentRanks(examId);
+  return {
+    count:pool.count,sum:pool.sum,segSize:pool.size,avg:pool.avg,
+    classList:pool.classList,byClass:pool.byClass,ranks:pool.ranks,
+    excludedCount:pool.excludedCount,excludedClasses:pool.excludedClasses,
+    raw:pool.excludedCount>0?examGradeBoardRaw(examId):null,
+  };
 }
 
 // 本班在这一场的账：均分、班级排名、三段（段前 X% / 中间 / 段后 Y%）的人数与名单
@@ -51,7 +63,10 @@ function classExamSlice(examId,className,config){
   const cfg=config||classAnalysisConfig(state.settings);
   const seg=examGradeBoard(examId);
   const cls=normalizeClassName(className);
-  const slice={examId,className:cls,seg,count:0,sum:0,avg:null,rank:null,classCount:seg.classList.length,
+  // 本班自己被排除在参照池外时（一般不会），这一段退回“文件校次 + 全段人数”，页面上另给提示
+  const inPool=!segmentIsExcluded(cls);
+  const segSize=inPool?seg.segSize:(seg.raw?seg.raw.count:0);
+  const slice={examId,className:cls,seg,segSize,inPool,count:0,sum:0,avg:null,rank:null,classCount:seg.classList.length,
     top:{count:0,students:[]},mid:{count:0,students:[]},bottom:{count:0,students:[]},noRank:0};
   (state.examResults||[]).forEach(r=>{
     if(!r||r.examId!==examId)return;
@@ -60,8 +75,9 @@ function classExamSlice(examId,className,config){
     const score=Number(result.score);
     if(!(Number.isFinite(score)&&score>0))return;
     slice.count++;slice.sum+=score;
-    const gradeRank=rankNumber(result.gradeRank);
-    const pct=(gradeRank&&seg.segSize)?gradeRank/seg.segSize:null;
+    // 段次用参照池里的重算值（与学校校次口径一致），不再直接读文件里的校次
+    const gradeRank=inPool?(seg.ranks.get(r.studentId)||0):rankNumber(result.gradeRank);
+    const pct=(gradeRank&&segSize)?gradeRank/segSize:null;
     const student={id:r.studentId,name:result.displayName||result.name||'',score,
       gradeRank,classRank:rankNumber(result.classRank),pct};
     if(pct===null){slice.noRank++;return;}
@@ -74,6 +90,9 @@ function classExamSlice(examId,className,config){
   slice.bottom.count=slice.bottom.students.length;
   slice.avg=slice.count?slice.sum/slice.count:null;
   slice.rank=seg.byClass.has(cls)?seg.byClass.get(cls).rank:null;
+  // 文件口径（全部班）的班排名，用于“全段 10/21”的对照；没有排除班时为 null
+  slice.rawRank=seg.raw&&seg.raw.byClass.has(cls)?seg.raw.byClass.get(cls).rank:null;
+  slice.rawClassCount=seg.raw?seg.raw.classList.length:null;
   // 三段占比（分母是“有段次的在班人数”，没段次的人单独计数）
   const ranked=slice.top.count+slice.mid.count+slice.bottom.count;
   slice.rankedCount=ranked;
@@ -172,14 +191,23 @@ function renderClassAnalysis(){
   const gapEntries=classGapEntries(withData,CLASS_GAP_LIMIT);
   const gapStats=gapEntries.length>=2?classGapStats(gapEntries):null;
   const focusGap=gapStats?(gapStats.rows.find(r=>r.exam.id===focus.exam.id)||null):null;
+  // 参照池提示：排除重点班后，段均分/班排名/三段占比/差距图都只算池内的班（见 segment.js）
+  const excludedList=(typeof segmentExcluded==='function')?[...segmentExcluded()]:[];
+  const poolBadge=excludedList.length
+    ?`<p class="hint pool-badge">段口径：平行班（已排除 ${excludedList.map(esc).join('、')}）——段均分、班排名、三段占比、差距图都只算池内的班</p>`
+    :'';
   // 本班均分后面跟“和段均分的差”，正数绿色、负数红色
   const avgDiff=(s.avg!==null&&seg.avg!==null)?(s.avg-seg.avg):null;
   const avgDiffHtml=avgDiff===null?''
     :`<span class="class-kpi-diff ${avgDiff>=0?'is-up':'is-down'}">(${avgDiff>=0?'+':'-'}${Math.abs(avgDiff).toFixed(1)})</span>`;
   // 第三张卡：这场和段均分相差几个 σ*，档位用文字写（持平 / 略 / 明显 / 突出）
+  // 班均分排名用参照池（平行班）口径；有排除班时把“全段”名次放在小字里对照
+  const rankHint=hasSegPeer
+    ?(s.rawRank?`全段 ${s.rawRank}/${s.rawClassCount}`:`共 ${s.classCount} 个班`)
+    :'缺全年段数据';
   const kpis=[
     {label:'本班均分',value:classFix(s.avg),html:avgDiffHtml,hint:`满分 ${classFix(focus.exam.totalScore)}`},
-    {label:'班均分排名',value:(s.rank&&hasSegPeer)?`第 ${s.rank} / ${s.classCount}`:'—',hint:hasSegPeer?`共 ${s.classCount} 个班`:'缺全年段数据'},
+    {label:'班均分排名',value:(s.rank&&hasSegPeer)?`第 ${s.rank} / ${s.classCount}`:'—',hint:rankHint},
     {label:'与段均分相差',
       value:(focusGap&&focusGap.z!==null)?`${focusGap.d>=0?'+':'-'}${Math.abs(focusGap.z).toFixed(1)}σ`:'—',
       hint:(focusGap&&focusGap.tier)?focusGap.tier.text:(hasSegPeer?'场次不足':'缺全年段数据')},
@@ -217,13 +245,15 @@ ${s.noRank?`<p class="hint">另有 ${s.noRank} 人有成绩但没有段次，没
 <td class="class-rank-count">${c.count}</td>\
 </tr>`;
   }).join('');
+  const excludedHere=(seg.excludedClasses||[]);
   const rankPanel=`<div class="panel" id="classRankPanel">\
 <h3 class="with-help">年段班级排名 ${panelHelpBtn('class.ranks','年段班级排名的说明')}<span class="hint">${examLine}</span></h3>\
 <div class="class-table-wrap"><table class="class-table class-rank-table">\
 <thead><tr><th>名次</th><th>班级</th><th>平均得分率</th><th>人数</th></tr></thead>\
 <tbody>${rankRows||'<tr><td colspan="4" class="hint">这场考试没有可比较的班级数据</td></tr>'}</tbody>\
-<tfoot><tr><td>—</td><td>全段</td><td class="class-rank-rate"><b>${classPctText(segRate,1)}</b></td><td>${seg.count}</td></tr></tfoot>\
+<tfoot><tr><td>—</td><td>段均分</td><td class="class-rank-rate"><b>${classPctText(segRate,1)}</b></td><td>${seg.count}</td></tr></tfoot>\
 </table></div>\
+${excludedHere.length?`<p class="hint">本场文件里还有 ${excludedHere.map(esc).join('、')}，已按「参照池」排除（不参与段均分与名次）。文件口径的全段名次见下面「逐场对比」里的小字。</p>`:''}\
 ${seg.classList.length<2?'<p class="hint">库里只有本班的数据，导入全年段汇总表才能和其它班比。</p>':''}\
 </div>`;
   // 逐场对比表（新的在上面）
@@ -232,7 +262,7 @@ ${seg.classList.length<2?'<p class="hint">库里只有本班的数据，导入�
     return `<tr><td>${esc(x.exam.name||'')}<br><small class="hint">${esc(x.exam.date||'')}</small></td>\
 <td>${classFix(sc.avg)}</td>\
 <td>${x.slice.seg.avg===null?'—':classFix(x.slice.seg.avg)}</td>\
-<td>${sc.rank&&x.slice.seg.classList.length>1?`${sc.rank}/${x.slice.classCount}`:'—'}</td>\
+<td>${sc.rank&&x.slice.seg.classList.length>1?`${sc.rank}/${x.slice.classCount}${sc.rawRank?`<small class="hint"> 全段 ${sc.rawRank}/${sc.rawClassCount}</small>`:''}`:'—'}</td>\
 <td>${sc.top.count} <small class="hint">${classPctText(sc.top.share,0)}</small></td>\
 <td>${sc.mid.count} <small class="hint">${classPctText(sc.mid.share,0)}</small></td>\
 <td>${sc.bottom.count} <small class="hint">${classPctText(sc.bottom.share,0)}</small></td></tr>`;
@@ -280,6 +310,7 @@ ${seg.classList.length<2?'<p class="hint">库里只有本班的数据，导入�
 ${gapNoteHtml}\
 </div>`
     :`<div class="panel"><h3>与段均分的差距</h3><div class="empty">至少要有两场“多班对比”的考试，才能画出和段平均的差距</div></div>`;
+  const excludedBanner=s.inPool?'':`<p class="hint pool-badge">本班（${esc(cls)}）在参照池的排除名单里，下面的段统计退回“文件校次 + 全段人数”。要到“设置 → 段排名参照池”里把它去掉。</p>`;
   view.innerHTML=`<div class="panel grade-analysis-head-panel" id="classAnalysisHead">\
 <div class="grade-analysis-head">\
 <h2 class="with-help">班级分析 ${panelHelpBtn('class.analysis','班级分析的说明')}
@@ -287,6 +318,8 @@ ${gapNoteHtml}\
 ${backBtn}\
 </div>\
 <div class="grade-chips" id="classExamChips">${[...withData].reverse().slice(0,12).map((x,i)=>`<button type="button" class="grade-jump${x===focus?' is-active':''}" data-class-exam="${esc(x.exam.id)}">${esc(x.exam.name||x.exam.date||'')}</button>`).join('')}</div>\
+${poolBadge}\
+${excludedBanner}\
 </div>\
 <div class="panel" id="classLatestPanel">\
 <h3 class="with-help">${focus===latest?'最近一场：':''}${examLine} ${panelHelpBtn('class.latest','本场概览的说明')}</h3>\
