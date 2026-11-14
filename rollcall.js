@@ -123,12 +123,12 @@ function renderRollcall(){
     loadSeatLayout().then(()=>{state.seatLoading=false;renderRollcall();}).catch(()=>{state.seatLoading=false;});
   }
   const inClass=state.students.filter(s=>s.className===state.currentClass),rankMap=averageRankMap(inClass);
-  // 本班一场成绩都没有（例如只导了名册）：难度不再按分数分层，提示一句免得误会
+  // 本班一场成绩都没有（例如只导了名册）：不再按分数分层，提示一句免得误会
   const noScores=inClass.length>0&&[...rankMap.values()].every(v=>v===null);
   // 候选是生成时的快照，标签等实时状态一律回查当前学生数据；已标记“不参与点名”的从列表里去掉
   const liveOf=c=>state.students.find(x=>x.id===c.student.id)||c.student;
   const visible=state.candidates.filter(c=>c.student.id===state.selectedCandidate||!liveOf(c).noCall);
-  const emptyText=state.candidates.length?(visible.length?'':'候选中的学生都已被标记为“不参与点名”。'):'选择难度后生成候选';
+  const emptyText=state.candidates.length?(visible.length?'':'候选中的学生都已被标记为“不参与点名”。'):'选择层次后生成候选';
   // 座位表：无人入座时折叠成一条提示；有人入座时可以点“座位表”标题收起/展开，收起后候选头像自动放大
   const seatedCount=state.seatLayout?state.seatLayout.seats.filter(s=>s.studentId).length:0;
   const seatCollapsed=Boolean(state.seatCollapsed);
@@ -169,7 +169,7 @@ ${avatarHtml(live,{size:56,cls:'avatar-picked'})}\
 <div class="candidate-result-who">\
 <strong class="${focusNameClass(live)}">${nameHtml(live,live.displayName||live.name)}</strong>${studentTags(live)}\
 </div>\
-<span class="candidate-result-diff">${['','简单','适中','困难'][state.difficulty]||''}</span>\
+<span class="candidate-result-diff">${ROLLCALL_LEVELS[state.difficulty]||''}</span>\
 </div>\
 <div class="candidate-result-meta">\
 <span>${avg===null?'—':`${(avg*100).toFixed(1)}%`} · 班次 ${rank??'—'}</span>\
@@ -213,21 +213,21 @@ ${seatedCount>0?'':'<div class="rollcall-gap"></div>'}\
 <div class="panel">\
 <div class="candidate-panel-head">\
 <h3 class="with-help">${state.selectedCandidate?'本次点名':'本次候选'} ${panelHelpBtn('rollcall.rules','点名规则的说明')}</h3>\
-<button type="button" class="secondary rollcall-stats-btn" id="rollcallStatsBtn" title="看点名统计、点名时间与题目难度统计">点名统计</button>\
+<button type="button" class="secondary rollcall-stats-btn" id="rollcallStatsBtn" title="看点名统计、点名时间与点名层次统计">点名统计</button>\
 </div>\
 ${candidateArea}${!state.selectedCandidate&&visible.length===0&&state.currentClass?`<p class="hint">${String(state.settings.sameDayRepeat)==='allow'?'当天已点名的学生也可以再次进入候选。':'当天已点名的学生不会再次进入候选。'}标记为“不参与点名”的学生不会进入候选。</p>`:''}${state.selectedCandidate?'<div class="selected-actions"><button class="danger change-student" id="markSelectedAbsent">缺席</button><button class="secondary change-student" id="undoCallBtn">撤销</button></div>':''}</div>\
 </div>\
 <div class="panel hero rollcall-actions">\
 <div class="rollcall-actions-head">\
 <div class="class-name">${inClass.length?`本班 ${inClass.length} 人`:'还没有学生资料'}</div>\
-<div class="question">${state.selectedCandidate?'单击难度按钮继续点名':'选择难度后生成候选'}</div>\
+<div class="question">${state.selectedCandidate?'单击层次按钮继续点名':'选择层次后生成候选'}</div>\
 </div>\
 <div class="difficulty-buttons">\
-<button class="secondary difficulty-button ${!state.selectedCandidate&&state.difficulty===1?'active':''}" data-difficulty="1">简单</button>\
-<button class="secondary difficulty-button ${!state.selectedCandidate&&state.difficulty===2?'active':''}" data-difficulty="2">适中</button>\
-<button class="secondary difficulty-button ${!state.selectedCandidate&&state.difficulty===3?'active':''}" data-difficulty="3">困难</button>\
+<button class="secondary difficulty-button ${!state.selectedCandidate&&state.difficulty===1?'active':''}" data-difficulty="1">学困</button>\
+<button class="secondary difficulty-button ${!state.selectedCandidate&&state.difficulty===2?'active':''}" data-difficulty="2">中等</button>\
+<button class="secondary difficulty-button ${!state.selectedCandidate&&state.difficulty===3?'active':''}" data-difficulty="3">优秀</button>\
 </div>\
-${noScores?'<p class="hint">本班还没有成绩，三档难度都按同权随机（不按分数分层），其余规则照旧。</p>':''}\
+${noScores?'<p class="hint">本班还没有成绩，三档层次都按同权随机（不按分数分层），其余规则照旧。</p>':''}\
 </div>`;
   const statsBtn=$('#rollcallStatsBtn');
   if(statsBtn)statsBtn.onclick=()=>setActiveView('history',{reset:true});
@@ -322,5 +322,5 @@ registerPanelHelp('rollcall.rules','点名规则介绍',
 <p><strong>抽中权重</strong>：近期被点得越多，抽中权重越低；<strong>近期没有被点到的学生抽中权重会升高</strong>，因此更容易被抽到。特别关注的学生不受“越点越低”的衰减影响，除非手动取消关注。</p>\
 <p><strong>当天重复点名</strong>：${allowRepeat?'允许 —— 当天已点过的学生仍可再次进入候选。':'不允许 —— 当天已点过的学生不再进入候选。'}</p>\
 <p><strong>其他</strong>：标记为“不参与点名”的学生不会进入候选；成绩靠后的学生（范围见设置页）在近期零次点名时还会获得额外加权。</p>\
-<p><strong>没有成绩时</strong>：如果本班一场成绩都还没有（例如只导入了名册），三档难度都按“同权随机”抽取，不按分数分层，其余规则同上。</p>`;
+<p><strong>没有成绩时</strong>：如果本班一场成绩都还没有（例如只导入了名册），三档层次都按“同权随机”抽取，不按分数分层，其余规则同上。</p>`;
   });

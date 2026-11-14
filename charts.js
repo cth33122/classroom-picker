@@ -1,11 +1,11 @@
-// 图表：难度饼图与成绩趋势图
+// 图表：点名层次饼图与成绩趋势图
 
 
 
 // Final statistics/data renderers: keep the difficulty chart in its own view
 // and expose the template download from the data screen.
 
-// 难度饼图：图注直接画在画布里，外部不再放文字。
+// 点名层次饼图：图注直接画在画布里，外部不再放文字。
 // 排布尽量紧凑：宽屏图注在圆环右侧，窄屏排在圆环下方；画布尺寸随容器宽度自适应。
 function drawDifficultyPie(counts){
   const canvas=$('#difficultyChart');
@@ -23,7 +23,7 @@ function drawDifficultyPie(counts){
   const ctx=canvas.getContext('2d');
   ctx.setTransform(dpr,0,0,dpr,0,0);
   ctx.clearRect(0,0,cssW,cssH);
-  const total=counts.reduce((sum,n)=>sum+n,0),colors=['#2f80ed','#f2c94c','#eb5757'],labels=['简单','适中','困难'];
+  const total=counts.reduce((sum,n)=>sum+n,0),colors=['#2f80ed','#f2c94c','#eb5757'],labels=ROLLCALL_LEVELS.slice(1);
   // 圆环尽量占满可用高度，四周只留很小余量
   const pad=8;
   const r=Math.max(30,Math.min(sideLegend?cssH/2-pad:cssH*0.36,cssW*(sideLegend?0.20:0.28)));

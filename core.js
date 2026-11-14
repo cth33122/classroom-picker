@@ -2,6 +2,9 @@
 
 const state={view:'rollcall',students:[],history:[],absences:[],exams:[],examResults:[],settings:{},candidates:[],selectedCandidate:null,currentClass:'',difficulty:3,source:'',pendingImport:null,studentSort:'score-desc',studentDetail:null,studentDetailFrom:'',studentListScroll:0,gradeAnalysisOpen:false,gradeAnalysisFromDetail:'',classAnalysisOpen:false,classAnalysisFromDetail:'',classAnalysisExamId:'',statsMode:'timeline',historyStudentId:'',studentCurrentExamId:'',studentPreviousExamId:'',scoreChartMode:'rate',photos:{},seatCollapsed:false,classBatches:[]};
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+// 点名三档（对应 state.difficulty 1/2/3）：按钮、结果卡、点名记录、学生详情、层次饼图共用这一份文案。
+// 下标 0 空着，方便直接用 difficulty 当索引。数值不变，只换显示名。
+const ROLLCALL_LEVELS=['','学困','中等','优秀'];
 // 整行可点：行上写 data-*-row；点到行内按钮/链接（详情、删除、评价按钮…）时优先走按钮，不触发整行动作
 function wireRowTap(scopeSel,attr,open){
   $$(`${scopeSel} [${attr}]`).forEach(row=>{

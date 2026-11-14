@@ -1,4 +1,4 @@
-// 点名算法配置：难度区间使用班级位次分位数，不使用成绩率。
+// 点名算法配置：层次区间使用班级位次分位数，不使用成绩率。
 const ALGORITHM_DEFAULTS = {
   configVersion: 5, candidateCount: 4,
   recentDecay: 0.58, recoveryPerCall: 0.12, focusBoost: 1.65, basisExamCount: 3, historyRule: 'twoMonths', sameDayRepeat: 'block', lowScorePercentile: 0.60, zeroRecentBoost: 1.5, shortcutClasses: [],

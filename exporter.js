@@ -13,7 +13,7 @@ async function exportBackup(options) {
     ?`备份已导出，但「不含学生头像」（本机 ${photos} 张）：换设备请另外“导出头像包”`
     :'备份已导出（本机还没有学生头像）');
 }
-async function exportHistory() { const [history,students]=await Promise.all([DB.all('history'),DB.all('students')]); const map=new Map(students.map(s=>[s.id,s])); const rows=[['时间','班级','学号','姓名','难度','评价','问题内容']]; history.forEach(x=>{const s=map.get(x.studentId)||{}; rows.push([new Date(x.at).toLocaleString(),s.className||'',s.id||x.studentId,s.name||'',x.difficulty||'',x.eval==='good'?'😊':x.eval==='bad'?'😢':'',String(x.question||'')]);}); downloadText(`点名历史-${localDate()}.csv`,rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n'),'text/csv;charset=utf-8'); }
+async function exportHistory() { const [history,students]=await Promise.all([DB.all('history'),DB.all('students')]); const map=new Map(students.map(s=>[s.id,s])); const rows=[['时间','班级','学号','姓名','层次','评价','问题内容']]; history.forEach(x=>{const s=map.get(x.studentId)||{}; rows.push([new Date(x.at).toLocaleString(),s.className||'',s.id||x.studentId,s.name||'',ROLLCALL_LEVELS[x.difficulty]||'',x.eval==='good'?'😊':x.eval==='bad'?'😢':'',String(x.question||'')]);}); downloadText(`点名历史-${localDate()}.csv`,rows.map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n'),'text/csv;charset=utf-8'); }
 
 // 导出成绩表格：每场考试一个工作表，工作表名沿用“考试名称-日期”，导出后可直接再导入
 function excelSheetName(name,date,used){

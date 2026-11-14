@@ -82,13 +82,13 @@ ${examRows.length>STUDENT_EXAM_PREVIEW?`<div class="actions"><button class="seco
 <h3>点名记录 <span class="badge">${calls.length}次</span></h3>\
 <div class="table-header history-detail-header">\
 <span>时间戳</span>\
-<span>难度</span>\
+<span>层次</span>\
 <span>评价</span>\
 <span>详情</span>\
 </div>\
 ${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc(String(x.id));return `<div class="stat-row history-detail-row">\
 <span>${new Date(x.at).toLocaleString()}</span>\
-<span>${['','简单','适中','困难'][x.difficulty]||'—'}</span>\
+<span>${ROLLCALL_LEVELS[x.difficulty]||'—'}</span>\
 <span class="history-eval-cell">${evalText(x.eval)}</span>\
 <span><button type="button" class="secondary row-btn" data-student-questions="${esc(id)}" title="查看并编辑该生的问题记录">详情</button></span>\
 </div>\

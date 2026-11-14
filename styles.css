@@ -309,7 +309,7 @@ body.modal-open .view-track { touch-action:none; }
 .shortcut-editor input { flex:1; min-width:0; }
 .shortcut-editor button { flex:0 0 auto; }
 .exam-date { display:block; margin-top:4px; }
-/* 难度饼图：图注已画进画布，容器紧贴画布，尽量不留空白 */
+/* 点名层次饼图：图注已画进画布，容器紧贴画布，尽量不留空白 */
 .difficulty-stats { padding-bottom:6px; }
 .difficulty-stats .history-section-title { margin-bottom:6px; }
 .difficulty-chart { display:block; line-height:0; }
@@ -398,13 +398,13 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
   .toast { bottom:calc(84px + env(safe-area-inset-bottom)); }
   .view { padding-bottom:20px; }
 }
-/* 点名记录（统计页）：姓名 / 时间戳 / 难度 / 评价 / 删除，5 列 */
+/* 点名记录（统计页）：姓名 / 时间戳 / 层次 / 评价 / 删除，5 列 */
 .history-timeline-header,.history-timeline-row { grid-template-columns:70fr 100fr 46fr 44px 48px; }
 /* 点名统计（统计页）：学生 / 次数 / 日期 / 详情，4 列 */
 .history-counts-header,.history-counts-row { grid-template-columns:1.4fr .8fr .8fr 48px; }
 .history-del-btn { width:100%; min-height:0; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--danger); font-size:12px; font-weight:700; padding:4px 6px; }
 .history-del-btn:hover { border-color:var(--danger); background:#fde8e7; }
-/* 学生详情页的点名记录：时间戳 / 难度 / 评价 / 详情（去掉班级列） */
+/* 学生详情页的点名记录：时间戳 / 层次 / 评价 / 详情（去掉班级列） */
 .history-detail-header,.history-detail-row { grid-template-columns:120fr 48fr 44px 48px; }
 /* 评价列：点一下记为 😊，再点同一档取消 */
 .history-eval-cell { text-align:center; }
@@ -454,7 +454,7 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
 .month-pill.is-on { border-color:var(--teal); background:var(--mint); color:var(--teal); }
 .question-search { flex:0 0 auto; width:126px; min-height:32px; border:1px solid var(--line); border-radius:999px; padding:5px 10px; font:inherit; font-size:13px; }
 .question-list { flex:1 1 auto; min-height:0; overflow-y:auto; display:grid; gap:10px; align-content:start; padding-right:2px; }
-/* 每条记录：左侧竖排 emoji，右侧“时间/难度”一行 + 按内容高度分配的问题框 */
+/* 每条记录：左侧竖排 emoji，右侧“时间/层次”一行 + 按内容高度分配的问题框 */
 .question-row { display:grid; grid-template-columns:auto 1fr; grid-template-rows:auto auto; gap:4px 8px; border:1px solid var(--line); border-radius:8px; padding:8px 10px; background:#fff; }
 .question-row.is-focus { border-color:var(--teal); box-shadow:0 0 0 2px rgba(15,118,110,.25); }
 .question-row > .eval-picker { grid-row:1 / span 2; display:flex; flex-direction:column; gap:4px; }

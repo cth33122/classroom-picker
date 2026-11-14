@@ -1,4 +1,4 @@
-// 统计页：时间线/次数/难度统计与排序（姓名旁标签：关注=暗红姓名，不参与点名=灰标签）
+// 统计页：时间线/次数/层次统计与排序（姓名旁标签：关注=暗红姓名，不参与点名=灰标签）
 
 function historyScope(){return state.students.filter(s=>s.className===state.currentClass);}
 
@@ -22,9 +22,9 @@ function renderHistory(){
   const ordered=[...timeline].sort((a,b)=>{const sa=classStudents.find(s=>s.id===a.studentId),sb=classStudents.find(s=>s.id===b.studentId),va=sort.key==='name'?(sa?.name||a.studentId):sort.key==='difficulty'?Number(a.difficulty):Date.parse(a.at),vb=sort.key==='name'?(sb?.name||b.studentId):sort.key==='difficulty'?Number(b.difficulty):Date.parse(b.at);return(typeof va==='string'?va.localeCompare(vb,'zh-CN'):va-vb)*factor;});
   const difficultyCounts=[1,2,3].map(level=>timeline.filter(x=>Number(x.difficulty)===level).length),f=state.historyFilter||'all',options=[['all','总计'],['calls20','近20次点名'],['calls30','近30次点名'],['calls50','近50次点名'],['week','近1周'],['twoWeeks','近2周'],['month','近1月'],['twoMonths','近2月'],['threeMonths','近3月']],arrow=k=>sortArrow(sort.key===k,sort.direction);
   const nav=`<div class="stats-switch"><button class="secondary ${mode==='counts'?'active':''}" id="countsBtn">点名统计</button><button class="secondary ${mode==='timeline'?'active':''}" id="timelineBtn">点名记录</button></div>`;
-  // 题目难度统计已并入“点名记录”，固定显示在记录列表上方
-  // 题目难度统计：图注已经画进画布里，外部不再放文字
-  const difficultyPanel=`<div class="panel difficulty-stats"><h2 class="history-section-title">题目难度统计</h2><div class="difficulty-chart"><canvas id="difficultyChart"></canvas></div></div>`;
+  // 点名层次统计已并入“点名记录”，固定显示在记录列表上方
+  // 点名层次统计：图注已经画进画布里，外部不再放文字
+  const difficultyPanel=`<div class="panel difficulty-stats"><h2 class="history-section-title">点名层次统计</h2><div class="difficulty-chart"><canvas id="difficultyChart"></canvas></div></div>`;
   // 统计范围与合计点名次数在同一行
   const statsRow=`<div class="grid">\
 <div class="field">\
@@ -42,7 +42,7 @@ function renderHistory(){
 <div class="table-header history-timeline-header">\
 <button data-history-sort="name">姓名${arrow('name')}</button>\
 <button data-history-sort="at">时间戳${arrow('at')}</button>\
-<button data-history-sort="difficulty">难度${arrow('difficulty')}</button>\
+<button data-history-sort="difficulty">层次${arrow('difficulty')}</button>\
 <span>评价</span>\
 <span>删除</span>\
 </div>${ordered.length?ordered.map(x=>{const s=classStudents.find(st=>st.id===x.studentId);const q=String(x.question||'').trim();const rowId='historyRow-'+String(x.id).replace(/[^\w-]/g,'');const qid=esc(String(x.id));return `<div class="stat-row history-timeline-row" id="${rowId}" data-history-row="${esc(x.studentId)}">\
@@ -50,7 +50,7 @@ function renderHistory(){
 <button class="student-link ${focusNameClass(s)}" data-history-student="${esc(x.studentId)}">${esc(s?.displayName||s?.name||x.studentId)}</button>${studentTags(s)}\
 </span>\
 <span>${new Date(x.at).toLocaleString()}</span>\
-<span>${['','简单','适中','困难'][x.difficulty]||'—'}</span>\
+<span>${ROLLCALL_LEVELS[x.difficulty]||'—'}</span>\
 <span class="history-eval-cell"><button type="button" class="history-eval-btn${x.eval?' is-'+x.eval:''}" data-history-eval="${qid}" title="${x.eval?(x.eval==='good'?'😊 满意 · 点击改为 😢':'😢 不满意 · 点击取消评价'):'点击记为 😊 满意'}">${x.eval?evalLabel(x.eval):'—'}</button></span>\
 <span><button type="button" class="history-del-btn" data-del-history="${qid}" title="删除这条点名记录">删除</button></span>\
 </div>\
