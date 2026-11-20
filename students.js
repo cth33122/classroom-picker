@@ -25,8 +25,62 @@ ${avatarHtml(s,{size:34})}\
     
 }
 
+// 考试记录里的名次条：把“第几名 / 当场人数”换成百分位（0 = 最前，1 = 最后）。
+// 班排名用当场同班人数；段排名用当场段人数（参照池口径，见 segment.js）。
+function examRankStat(examId,studentId,className,rank,kind){
+  const n=rankNumber(rank);
+  if(n===null)return null;
+  const cls=normalizeClassName(className);
+  let size=kind==='class'?examClassSize(examId,cls):examSegSize(examId);
+  // 本班不参与段排名时，段次退回文件里的全段校次，分母也要换成全段人数，否则百分位会偏大
+  if(kind!=='class'&&typeof segmentRankOf==='function'&&!segmentRankOf(examId,studentId)
+    &&typeof segmentIsExcluded==='function'&&segmentIsExcluded(cls))size=examScoredCount(examId);
+  size=Number(size)||0;
+  if(size&&size<n)size=n;        // 名次比人数还大（缺考/脏数据）时别让标记溢出条子
+  return {rank:n,size,pct:size?Math.min(1,n/size):null};
+}
+function examScoredCount(examId){
+  let n=0;
+  (state.examResults||[]).forEach(r=>{
+    if(!r||r.examId!==examId)return;
+    const score=Number(r.result&&r.result.score);
+    if(Number.isFinite(score)&&score>0)n++;
+  });
+  return n;
+}
+function rankPctText(p){
+  const v=p*100;
+  return `前${(v<10?v.toFixed(1):String(Math.round(v))).replace(/\.0$/,'')}%`;
+}
+// 一条名次条：左＝当场最后一名、右＝第 1 名（越靠右越靠前）；
+// 竖线按“1 − 百分位”落点，右侧写“名次/人数 · 前x%”
+function examRankBarHtml(label,stat){
+  if(!stat)return `<span class="rank-bar is-empty"><span class="rank-bar-label">${label}</span><span class="rank-bar-track"></span><span class="rank-bar-value">—</span></span>`;
+  const pos=stat.pct===null?'':` style="--pos:${((1-stat.pct)*100).toFixed(2)}%"`;
+  const zone=stat.pct===null?'is-empty':stat.pct<=1/3?'is-top':stat.pct<=2/3?'is-mid':'is-low';
+  const title=`${label==='班'?'班排名':'段排名'} ${stat.rank}/${stat.size||'—'}${stat.pct===null?'':`，${rankPctText(stat.pct)}`}`;
+  return `<span class="rank-bar ${zone}"${pos}><span class="rank-bar-label">${label}</span><span class="rank-bar-track" title="${title}">${stat.pct===null?'':'<span class="rank-bar-pin"></span>'}</span><span class="rank-bar-value"><b>${stat.rank}</b>/${stat.size||'—'}${stat.pct===null?'':`<em>${rankPctText(stat.pct)}</em>`}</span></span>`;
+}
+// 一条考试记录：考试名/日期 + 分数/总分 + 班/段名次条
+function examRecordRowHtml(exam,result,student){
+  const cls=normalizeClassName(result.className||student.className);
+  const classStat=examRankStat(exam.id,student.id,cls,result.classRank,'class');
+  const poolRank=typeof segmentRankOf==='function'?segmentRankOf(exam.id,student.id):0;
+  const gradeStat=examRankStat(exam.id,student.id,cls,poolRank||rankNumber(result.gradeRank),'grade');
+  const total=Number(exam.totalScore)||100;
+  return `<div class="stat-row exam-record-row">\
+<span class="exam-record-title">\
+<strong>${esc(exam.name)}</strong>\
+<br>\
+<small class="hint">考试时间：${esc(exam.date)}</small>\
+</span>\
+<span class="exam-score"><strong>${result.score}</strong><small>/${total}</small></span>\
+<span class="exam-ranks">${examRankBarHtml('班',classStat)}${examRankBarHtml('段',gradeStat)}</span>\
+</div>`;
+}
+// ---- 考试记录：分数/总分 + 班/段名次条 ----
 function renderStudentDetail(id){
-  const s=state.students.find(x=>x.id===id);if(!s){state.studentDetail=null;renderStudents();return;}const records=chronologicalExams().map(e=>({exam:e,result:examResult(e,s)})).filter(x=>x.result),maxClass=Math.max(...state.examResults.map(x=>rankNumber(x.result?.classRank)||0),1),maxGrade=Math.max(1,...chronologicalExams().map(e=>(typeof segmentRanks==='function'?segmentRanks(e.id).size:0)||0)),current=records[records.length-1]?.result,display=current?.displayName||s.displayName||s.name;
+  const s=state.students.find(x=>x.id===id);if(!s){state.studentDetail=null;renderStudents();return;}const records=chronologicalExams().map(e=>({exam:e,result:examResult(e,s)})).filter(x=>x.result),current=records[records.length-1]?.result,display=current?.displayName||s.displayName||s.name;
   // 考试记录：默认从新到旧，最多列 STUDENT_EXAM_PREVIEW 条，可展开；成绩趋势固定取最近 5 次并按时间从旧到新
   const examRows=[...records].reverse();
   const shownExams=state.studentExamExpand?examRows:examRows.slice(0,STUDENT_EXAM_PREVIEW);
@@ -45,7 +99,6 @@ ${noteBadge(s)}\
 <div class="detail-actions">\
 <button class="secondary detail-focus${s.focus?' on':''}" id="detailFocusBtn">${s.focus?'已关注':'未关注'}</button>\
 <button class="secondary detail-nocall${s.noCall?' on':''}" id="detailNoCallBtn">${s.noCall?'不参与点名':'参与点名'}</button>\
-<button class="secondary" id="detailClassAnalysisBtn" title="看这个班的均分、段内排名和三段占比">班级分析</button>\
 </div>\
 <div class="detail-status">${gradeStatusChipsFor(s)}</div>\
 </div>\
@@ -62,20 +115,7 @@ ${noteBadge(s)}\
 </div>\
 </div>\
 <div class="panel">\
-<h3>考试记录</h3>${shownExams.length?shownExams.map(x=>`<div class="stat-row exam-record-row">\
-<span>\
-<strong>${esc(x.exam.name)}</strong>\
-<br>\
-<small class="hint">考试时间：${esc(x.exam.date)}</small>\
-</span>\
-<span>\
-<strong>${x.result.score}分</strong>\
-</span>\
-<span class="rank-cell">\
-<span style="background:${rankColor(Number(x.result.classRank)||maxClass,maxClass)}" class="rank-chip">班 ${x.result.classRank??'—'}</span>\
-<span style="background:${rankColor(segmentRankFor(x.exam.id,s.id,x.result.gradeRank)||maxGrade,maxGrade)}" class="rank-chip">段 ${segmentRankFor(x.exam.id,s.id,x.result.gradeRank)??'—'}</span>\
-</span>\
-</div>`).join(''):'<div class="empty">暂无考试记录</div>'}\
+<h3>考试记录</h3>${shownExams.length?`<p class="hint exam-record-legend">名次条：左＝最后一名，右＝第 1 名（越靠右越靠前）；竖线是本人位置，右侧数字为名次/当场人数（前 x%）。</p>${shownExams.map(x=>examRecordRowHtml(x.exam,x.result,s)).join('')}`:'<div class="empty">暂无考试记录</div>'}\
 ${examRows.length>STUDENT_EXAM_PREVIEW?`<div class="actions"><button class="secondary" id="toggleExamList">${state.studentExamExpand?'收起考试记录':`查看更多考试（共 ${examRows.length} 次）`}</button></div>`:''}\
 </div>\
 <div class="panel">\
@@ -110,7 +150,7 @@ ${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc
   $$('#view-students [data-avatar-edit]').forEach(b=>b.onclick=openAvatar);
   // 状态标签：点一下跳到成绩分析，并滚到这位学生的条目
   $$('#view-students [data-grade-status-jump]').forEach(b=>b.onclick=()=>openGradeAnalysisForStudent(b.dataset.gradeStatusJump));
-  $('#detailFocusBtn').onclick=async()=>{s.focus=!s.focus;await DB.put(s);renderStudentDetail(id);toast(s.focus?`已把 ${s.name} 设为关注`:`已取消 ${s.name} 的关注`);};$('#detailClassAnalysisBtn').onclick=()=>openClassAnalysis(id);$('#detailNoCallBtn').onclick=async()=>{s.noCall=!s.noCall;await DB.put(s);refreshCandidatesAfterSettings();renderStudentDetail(id);toast(s.noCall?`已把 ${s.name} 标记为不参与点名`:`已恢复 ${s.name} 的候选资格`);};$('#editPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openNoteBtn').onclick=()=>openNoteEditor(id);const examToggleBtn=$('#toggleExamList');if(examToggleBtn)examToggleBtn.onclick=()=>{state.studentExamExpand=!state.studentExamExpand;renderStudentDetail(id);};drawScoreChart(s,trendRecords);$('#toggleScoreMode').onclick=()=>{state.scoreChartMode=scoreChartMode()==='raw'?'rate':'raw';renderStudentDetail(id);};$('#viewScoreChart').onclick=()=>openScoreChart(records);$('#downloadScoreChartInline').onclick=()=>{const canvas=$('#scoreChart');const link=document.createElement('a');link.download='成绩趋势图.png';link.href=canvas.toDataURL('image/png');link.click();};
+  $('#detailFocusBtn').onclick=async()=>{s.focus=!s.focus;await DB.put(s);renderStudentDetail(id);toast(s.focus?`已把 ${s.name} 设为关注`:`已取消 ${s.name} 的关注`);};$('#detailNoCallBtn').onclick=async()=>{s.noCall=!s.noCall;await DB.put(s);refreshCandidatesAfterSettings();renderStudentDetail(id);toast(s.noCall?`已把 ${s.name} 标记为不参与点名`:`已恢复 ${s.name} 的候选资格`);};$('#editPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openNoteBtn').onclick=()=>openNoteEditor(id);const examToggleBtn=$('#toggleExamList');if(examToggleBtn)examToggleBtn.onclick=()=>{state.studentExamExpand=!state.studentExamExpand;renderStudentDetail(id);};drawScoreChart(s,trendRecords);$('#toggleScoreMode').onclick=()=>{state.scoreChartMode=scoreChartMode()==='raw'?'rate':'raw';renderStudentDetail(id);};$('#viewScoreChart').onclick=()=>openScoreChart(records);$('#downloadScoreChartInline').onclick=()=>{const canvas=$('#scoreChart');const link=document.createElement('a');link.download='成绩趋势图.png';link.href=canvas.toDataURL('image/png');link.click();};
 }
 
 // 打开某个学生的详情页（并切到“学生”标签，供点名页点座位、统计页点条目调用）

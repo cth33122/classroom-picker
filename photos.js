@@ -363,15 +363,28 @@ function parseAvatarManifest(text,byName){
   });
 }
 function avatarStudentIndex(){
-  const byName=new Map(),byNo=new Map();
+  const byName=new Map(),byNo=new Map(),multiNo=new Set();
   state.students.forEach(s=>{
     [norm(s.name),norm(s.displayName)].filter(Boolean).forEach(k=>{
       const arr=byName.get(k)||[];
       if(!arr.includes(s))arr.push(s);
       byName.set(k,arr);
     });
-    if(s.sourceExamId)byNo.set(String(s.sourceExamId).trim(),s);
+    // 编号：不能只看 sourceExamId。同一份全年段成绩里，“学号/考号/准考证号/自定义考号”
+    // 都是同一个人，而 sourceExamId 只留了最后一次导入的那一列（常常是准考证号）；
+    // 头像包的文件名却通常写“学号+姓名”（如 260307010315陈俊豪.jpg）。
+    // 只登记 sourceExamId 时这种照片认不出编号，只能退回按姓名认——一遇到同名同学
+    // （如 7 班和 14 班都有的陈俊豪）就变成“重名待确认”，头像怎么也导不进去。
+    // 所以这里把所有已知别名一起登记；同一个编号对到两个学生（脏数据）时不猜，留给姓名/班级判断。
+    identityValuesOf(s).forEach(v=>{
+      const key=String(v).trim();
+      if(!key)return;
+      const prev=byNo.get(key);
+      if(prev&&prev!==s){multiNo.add(key);return;}
+      byNo.set(key,s);
+    });
   });
+  multiNo.forEach(k=>byNo.delete(k));
   return {byName,byNo};
 }
 // 学号 → 姓名（+班级）→ 重名时用当前班优先；还是分不清就报“重名待确认”
@@ -549,20 +562,36 @@ async function importAvatarPackage(file){
 }
 function showAvatarImportResult({report,leftover,total,processed,replaced,failed,classes}){
   document.getElementById('avatarImportResult')?.remove();
-  const inClass=state.students.filter(s=>!state.currentClass||s.className===state.currentClass);
-  const missing=inClass.filter(s=>!photoRecord(s.id));
-  const classList=Array.isArray(classes)?classes:[];
+  const classList=[...new Set((Array.isArray(classes)?classes:[]).map(c=>normalizeClassName(c)).filter(Boolean))];
+  // 只核对“这次真正写入了头像的班”，不要拿顶部当前选的班来比：
+  // 在 14 班页面上导入 7 班头像包时，旧文案会用 14 班的人数说“本班还有 N 人没有头像”，
+  // 看起来像这次导入没成功（其实是另一个班本来就缺照片）。
+  const nameOf=s=>s.displayName||s.name;
+  const coverage=classList.map(cls=>{
+    const list=state.students.filter(s=>normalizeClassName(s.className)===cls);
+    return {cls,count:list.length,missing:list.filter(s=>!photoRecord(s.id))};
+  });
   const scopeNote=classList.length>1?`，涉及 ${classList.length} 个班（${classList.slice(0,6).join('、')}${classList.length>6?' 等':''}）`:'';
   const stats=`压缩包内照片 ${total} 张，成功写入 ${processed} 人的头像${scopeNote}${replaced?`（覆盖了 ${replaced} 个已有头像）`:''}`;
   const notes=[];
   if(report.fromManifest||report.fromFile)notes.push(`按清单对上 ${report.fromManifest} 人，按文件名对上 ${report.fromFile} 人`);
   if(report.dupRows)notes.push(`清单里同一个人写了多行，只用了第一行（${report.dupRows} 行）`);
-  if(report.ambiguous.length)notes.push(`重名待确认：${report.ambiguous.slice(0,8).join('、')}${report.ambiguous.length>8?' 等':''}——请在清单里补上学号，或写成“张三(2)”这种带序号的名字`);
+  if(report.ambiguous.length)notes.push(`重名待确认：${report.ambiguous.slice(0,8).join('、')}${report.ambiguous.length>8?' 等':''}——请在清单里补上学号/考号，或写成“张三(2)”这种带序号的名字`);
   if(report.noStudent.length)notes.push(`清单里这些人在班内名单找不到：${report.noStudent.slice(0,8).join('、')}${report.noStudent.length>8?' 等':''}`);
   if(report.noFile.length)notes.push(`清单里这些行没找到对应照片：${report.noFile.slice(0,8).join('、')}${report.noFile.length>8?' 等':''}`);
   if(failed.length)notes.push(`这些照片读取失败：${failed.slice(0,6).join('；')}${failed.length>6?' 等':''}`);
   if(leftover.length)notes.push(`压缩包里还有 ${leftover.length} 张照片没能和学生对上（文件名里最好带学号或姓名，也可以写进清单的文件名列）`);
-  if(missing.length)notes.push(`本班还有 ${missing.length} 人没有头像，可以在“学生”页点开某个人，点头像直接拍照或选图`);
+  // 导入后这个班的覆盖情况：全齐时明确说“50/50”，不再让人怀疑导入没成功；
+  // 还缺人时直接点名，并说清是“这次导入没覆盖到他们”，不是导入失败。
+  if(coverage.length){
+    const shown=coverage.filter(c=>c.count>0);
+    if(shown.length)notes.push(`导入后头像：${shown.map(c=>`${c.cls} ${c.count-c.missing.length}/${c.count} 人`).join('、')}`);
+    const lacking=shown.filter(c=>c.missing.length).map(c=>{
+      const names=c.missing.slice(0,6).map(nameOf).join('、');
+      return `${c.cls} ${names}${c.missing.length>6?` 等 ${c.missing.length} 人`:''}`;
+    });
+    if(lacking.length)notes.push(`还缺照片：${lacking.join('；')}——这次导入没覆盖到这些同学（压缩包里没有他们的照片，或名字/编号没对上），可以到“学生”页点开单独拍照或选图`);
+  }
   const modal=document.createElement('div');
   modal.id='avatarImportResult';modal.className='modal-backdrop';
   modal.innerHTML=`<div class="modal-card seat-import-card" role="dialog" aria-modal="true">\

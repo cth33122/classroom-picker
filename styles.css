@@ -303,7 +303,34 @@ body.modal-open .view-track { touch-action:none; }
 .chart-preview-card { width:min(820px,100%); }
 .chart-preview-wrap { width:100%; overflow:hidden; border:1px solid var(--line); border-radius:7px; background:#fff; }
 .chart-preview-wrap canvas { display:block; max-width:100%; border:0; background:#fff; }
-.rank-cell { min-width:150px; }.rank-chip { display:inline-block; min-width:25px; padding:2px 4px; border-radius:4px; text-align:center; font-size:11px; }
+/* 学生详情·考试记录：分数/总分；班排名、段排名各一条名次条。
+   条子从左到右＝当场最后一名到第 1 名（越靠右越靠前），竖线按“1 − 百分位”落点；
+   底色分三段（左 1/3 红、中间 1/3 琥珀、右 1/3 绿），右侧标“名次/人数 · 前x%” */
+.exam-record-row { grid-template-columns:minmax(90px,1.15fr) auto minmax(180px,1.5fr); align-items:center; gap:10px; }
+.exam-record-title strong { display:block; overflow-wrap:anywhere; }
+.exam-record-legend { margin:-4px 0 8px; }
+.exam-score { text-align:right; white-space:nowrap; font-variant-numeric:tabular-nums; }
+.exam-score strong { font-size:16px; }
+.exam-score small { margin-left:1px; color:var(--muted); font-size:12px; }
+.exam-ranks { display:grid; grid-template-columns:16px minmax(28px,1fr) auto; align-items:center; gap:6px; min-width:0; }
+/* 两条名次条共用同一套列宽（display:contents 让三块直接排进 .exam-ranks 的网格），
+   这样“班”和“段”的条子一样长、三段分界对齐，位置才好横向比较 */
+.rank-bar { display:contents; }
+.rank-bar-label { color:var(--muted); font-size:11px; font-weight:700; text-align:center; }
+.rank-bar-track { position:relative; height:9px; border-radius:999px; background:linear-gradient(90deg,#fca5a5 0%,#fca5a5 33.3%,#fcd34d 33.3%,#fcd34d 66.6%,#86efac 66.6%,#86efac 100%); }
+.rank-bar-pin { position:absolute; left:clamp(4px,var(--pos,50%),calc(100% - 4px)); top:50%; width:4px; height:15px; border-radius:2px; background:#15803d; box-shadow:0 0 0 1.5px #fff; transform:translate(-50%,-50%); }
+.rank-bar.is-top .rank-bar-pin { background:#15803d; }
+.rank-bar.is-mid .rank-bar-pin { background:#b45309; }
+.rank-bar.is-low .rank-bar-pin { background:#b42318; }
+.rank-bar-value { white-space:nowrap; font-size:12px; font-variant-numeric:tabular-nums; }
+.rank-bar-value b { font-weight:800; }
+.rank-bar-value em { margin-left:4px; color:var(--muted); font-size:11px; font-style:normal; }
+.rank-bar.is-empty .rank-bar-track { background:var(--line); }
+.rank-bar.is-empty .rank-bar-value { color:var(--muted); }
+@media (max-width:600px) {
+  .exam-record-row { grid-template-columns:minmax(0,1fr) auto; }
+  .exam-ranks { grid-column:1 / -1; margin-top:2px; }
+}
 .stats-switch { display:flex; gap:6px; }.stats-switch .active { color:#fff; background:var(--teal); }
 .shortcut-editor { display:flex; align-items:center; gap:8px; }
 .shortcut-editor input { flex:1; min-width:0; }
@@ -326,7 +353,7 @@ body.modal-open .view-track { touch-action:none; }
 }
 .exam-import-list { display:grid; gap:10px; margin:12px 0; }
 .exam-import-card { border:1px solid var(--line); border-radius:8px; padding:12px; background:#fff; }
-.exam-import-card.exam-import-clash { border-color:#f3c2bd; background:#fff8f7; }
+.exam-import-skip { margin:8px 0 0; }
 .exam-import-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
 .exam-import-head strong { flex:1 1 auto; min-width:0; overflow-wrap:anywhere; font-size:15px; }
 .exam-import-pick { display:inline-flex; align-items:center; gap:5px; color:var(--muted); font-size:13px; font-weight:700; }
@@ -469,6 +496,9 @@ ruby rt { font-size:.55em; color:var(--muted); font-weight:600; letter-spacing:0
 .backup-actions > * { flex:1 1 0; min-width:130px; }
 /* “导入备份文件”用 label 包住隐藏的 file 输入，外观与按钮一致 */
 .restore-label { display:inline-flex; align-items:center; justify-content:center; text-align:center; min-height:42px; border-radius:7px; padding:10px 14px; font-weight:700; cursor:pointer; }
+/* 数据页的“导入成绩”是主入口：金黄色，和旁边绿色的“导入名册”一眼分开 */
+.score-import { color:#4a3300; background:#f5c542; }
+.score-import:hover { background:#e8b62e; }
 /* 设置项旁边的小问号：点开该设置项的说明弹窗 */
 .field-help { flex:0 0 auto; width:20px; height:20px; min-height:0; padding:0; border:1px solid var(--line); border-radius:50%; background:#fff; color:var(--muted); font-size:12px; font-weight:700; line-height:1; cursor:pointer; }
 .field-help:hover, .field-help:focus { border-color:var(--teal); color:var(--teal); }

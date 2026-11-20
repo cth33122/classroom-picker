@@ -101,8 +101,6 @@ function rankNumber(value){if(value===null||value===undefined||String(value).tri
 
 function rankDelta(current,previous){const now=rankNumber(current),old=rankNumber(previous);if(now===null||old===null)return '';const delta=now-old;if(delta===0)return '<span class="rank-same">（持平）</span>';return delta>0?`<span class="rank-down">（↓${delta}）</span>`:`<span class="rank-up">（↑${Math.abs(delta)}）</span>`;}
 
-function rankColor(rank,max){const ratio=max?Math.max(0,Math.min(1,(rank-1)/(max-1||1))):0;return ratio<.33?'#dcfce7':ratio<.66?'#fef3c7':'#fee2e2';}
-
 function examOptions(selected,allowEmpty=false){return `${allowEmpty?'<option value="">不选择</option>':''}${orderedExams().map(e=>`<option value="${esc(e.id)}" ${e.id===selected?'selected':''}>${esc(e.name||e.date)}</option>`).join('')||(!allowEmpty?'<option value="">暂无考试</option>':'')}`;}
 
 function previousExamIdFor(currentId){

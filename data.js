@@ -12,10 +12,10 @@ registerPanelHelp('data.backup','备份与恢复',
 <p>注意：<strong>学生头像不在备份文件里</strong>（头像体积大，存在本机），换设备时请另外导出头像包。</p>`);
 registerPanelHelp('data.avatar','学生头像',
   () => `<p>头像包就是一个 zip：照片放进去，再放一份 <strong>manifest.csv</strong>（列：班级、学号、姓名、文件名）说明谁是谁。</p>\
-<p>不想写清单也行——照片文件名里带学号或姓名（如 <code>20260101.jpg</code>、<code>张三.jpg</code>、<code>张三_头像.jpg</code>）会自动对上；<strong>同名同学请写学号，或写成“张三(2)”这种带序号的名字</strong>，否则系统不会猜。</p>\
+<p>不想写清单也行——照片文件名里带学号/考号或姓名（如 <code>20260101.jpg</code>、<code>张三.jpg</code>、<code>260307010315陈俊豪.jpg</code>）会自动对上；<strong>同名同学请写学号或考号，或写成“张三(2)”这种带序号的名字</strong>，否则系统不会猜。</p>\
 <p>导入时统一压成 ${AVATAR_SIZE}×${AVATAR_SIZE} 的 JPEG，存本机。</p>\
 <p>只给个别学生设置：到“学生”页点开他，点头像（或“设置头像”链接）即可拍照或选图，并能拖动、缩放裁剪。当前本机已存 <strong>${photoCount()}</strong> 张头像。</p>\
-<p><strong>导入头像包</strong>支持<strong>一个压缩包里放多个班</strong>的照片：按学号或姓名自动认人（同名跨班时用清单里的“班级”列、或文件名里的班号，如 <code>张三（01班）.jpg</code>、<code>01班_张三.jpg</code> 来区分），导入完会告诉你涉及了哪些班。</p>\
+<p><strong>导入头像包</strong>支持<strong>一个压缩包里放多个班</strong>的照片：按学号/考号或姓名自动认人（同名跨班时用清单里的“班级”列、或文件名里的班号，如 <code>张三（01班）.jpg</code>、<code>01班_张三.jpg</code> 来区分），导入完会告诉你涉及了哪些班。</p>\
 <p><strong>导出头像包</strong>会把本机已裁好的头像（${AVATAR_SIZE}×${AVATAR_SIZE}，方形 JPEG）打成一个 zip：包内文件名就是学生姓名（同名的补上班号），另外还带一份清单，换设备时用它导回去即可；可以只导本班，也可以选“全部班级”一次导完。</p>\
 <p><strong>批量调整裁剪</strong>：单寸照常见“人像偏小、脸偏下”，导入后点这里一次把一批头像统一放大、上下对齐（可以只动“本次导入的人”或整个班），不满意能一键撤回；点缩略图还能单独调这一张。</p>`);
 registerPanelHelp('data.classAdjust','调整班级',
@@ -42,16 +42,23 @@ async function handleImport(e){const file=e.target.files[0],input=e.target;
   if(importBusy){input.value='';toast('正在处理上一个文件，请稍候');return;}
   importBusy=true;
   box.textContent='正在读取…';
-  try{const result=await importGradeBooks(file);if(!result.exams.length){box.innerHTML='<p class="danger-text">未识别到学生记录，请检查文件格式。</p>';return;}state.pendingImport={file,exams:result.exams};box.innerHTML=importPreviewHtml(result);$('#saveExamBtn').addEventListener('click',savePendingExams);}catch(err){box.innerHTML=`<p class="danger-text">读取失败：${esc(err.message)}</p>`;}finally{importBusy=false;input.value='';}}
+  try{const result=await importGradeBooks(file);if(!result.exams.length){box.innerHTML='<p class="danger-text">未识别到学生记录，请检查文件格式。</p>';return;}state.pendingImport={file,exams:result.exams};box.innerHTML=importPreviewHtml(result);const saveBtn=$('#saveExamBtn');if(saveBtn)saveBtn.addEventListener('click',savePendingExams);}catch(err){box.innerHTML=`<p class="danger-text">读取失败：${esc(err.message)}</p>`;}finally{importBusy=false;input.value='';}}
 
-// 导入确认面板：每场考试一张卡片。多场考试时可改名称/日期/总分，并取消勾选不需要的工作表。
+// 导入确认面板：只给“新增”的考试列卡片（日期没导入过的）；同一天的旧考试收成一行提示。
+// 整本工作簿重导时，原来会给每场旧考试也画一张卡片，十几张重复卡片很占地方。
 function importPreviewHtml(result){
-  const exams=result.exams,multi=exams.length>1,existing=new Set(state.exams.map(x=>String(x.date))),seen=new Set(),totalRecords=exams.reduce((n,x)=>n+x.students.length,0);
-  const cards=exams.map((exam,index)=>{
-    const date=String(exam.source.date),clash=existing.has(date)||seen.has(date);seen.add(date);
+  const exams=result.exams,existing=new Set(state.exams.map(x=>String(x.date))),seen=new Set();
+  const rows=exams.map((exam,index)=>{
+    const date=String(exam.source.date),clash=existing.has(date)||seen.has(date);
+    seen.add(date);
+    return {exam,index,date,clash};
+  });
+  const fresh=rows.filter(r=>!r.clash),skipped=rows.filter(r=>r.clash);
+  const multi=exams.length>1,freshRecords=fresh.reduce((n,r)=>n+r.exam.students.length,0);
+  const cards=fresh.map(({exam,index,date})=>{
     const warn=exam.warnings.slice(0,3).map(esc).join('；');
-    return `<div class="exam-import-card${clash?' exam-import-clash':''}" data-exam-index="${index}">\
-<div class="exam-import-head">${multi?'<label class="exam-import-pick"><input type="checkbox" class="exam-include" checked> 导入</label>':''}<strong>${esc(exam.source.exercise)}</strong><span class="badge">${exam.students.length}条</span></div>\
+    return `<div class="exam-import-card" data-exam-index="${index}">\
+<div class="exam-import-head">${fresh.length>1?'<label class="exam-import-pick"><input type="checkbox" class="exam-include" checked> 导入</label>':''}<strong>${esc(exam.source.exercise)}</strong><span class="badge">${exam.students.length}条</span></div>\
 <div class="grid">\
 <div class="field">\
 <label>考试名称</label>\
@@ -67,15 +74,19 @@ function importPreviewHtml(result){
 </div>\
 </div>\
 <p class="hint">${multi?`来源工作表：${esc(exam.sheetNames.join('、'))}<br>`:''}${warn?`<span class="danger-text">提示：${warn}</span>`:'成绩、班次、段次将一并保存。'}</p>\
-${clash?'<p class="hint danger-text">该日期已存在考试记录，保存时将自动跳过。</p>':''}\
 </div>`;
   }).join('');
+  const skipNames=skipped.slice(0,3).map(r=>esc(r.exam.source.exercise)).join('、');
+  const head=fresh.length
+    ?`识别到 ${exams.length} 场考试：新增 ${fresh.length} 场（${freshRecords} 条记录）${skipped.length?`；另有 ${skipped.length} 场日期重复，不会重复导入`:''}。`
+    :`识别到 ${exams.length} 场考试，但日期都已经导入过：这次没有新增，不需要再保存。`;
   return `<div class="panel">\
 <h3>请确认考试信息</h3>\
-<p class="hint">共识别 ${exams.length} 场考试、${totalRecords} 条记录${multi?'。可修改名称、日期、总分，或取消勾选不需要的工作表。':'。'}</p>\
-<div class="exam-import-list">${cards}</div>\
+<p class="hint">${head}</p>\
+${cards?`<div class="exam-import-list">${cards}</div>`:''}\
+${skipped.length?`<p class="hint exam-import-skip">日期重复（不会重复导入）：${skipNames}${skipped.length>3?' 等':''}，共 ${skipped.length} 场</p>`:''}\
 ${result.warnings.length?`<p class="hint danger-text">提示：${result.warnings.slice(0,6).map(esc).join('；')}${result.warnings.length>6?'…':''}</p>`:''}\
-<button class="primary" id="saveExamBtn">确认并保存${multi?` ${exams.length} 场考试`:'考试'}</button>\
+${fresh.length?`<button class="primary" id="saveExamBtn">确认并保存${fresh.length>1?` ${fresh.length} 场考试`:'考试'}</button>`:''}\
 </div>`;
 }
 
@@ -191,7 +202,7 @@ async function savePendingExams(){
   const pending=state.pendingImport;
   if(!pending||importBusy)return;
   const btn=$('#saveExamBtn');
-  const entries=$$('#importResult .exam-import-card').map(card=>{const exam=pending.exams[Number(card.dataset.examIndex)];return {exam,include:pending.exams.length<2?true:Boolean(card.querySelector('.exam-include')?.checked),name:(card.querySelector('.exam-name')?.value||'').trim()||exam.source.exercise,date:card.querySelector('.exam-date')?.value||exam.source.date,totalScore:Number(card.querySelector('.exam-total')?.value||exam.totalScore)};}).filter(x=>x.include);
+  const entries=$$('#importResult .exam-import-card').map(card=>{const exam=pending.exams[Number(card.dataset.examIndex)];return {exam,include:card.querySelector('.exam-include')?.checked!==false,name:(card.querySelector('.exam-name')?.value||'').trim()||exam.source.exercise,date:card.querySelector('.exam-date')?.value||exam.source.date,totalScore:Number(card.querySelector('.exam-total')?.value||exam.totalScore)};}).filter(x=>x.include);
   if(!entries.length){toast('请至少勾选一场考试');return;}
   const invalid=entries.find(x=>!Number.isFinite(x.totalScore)||x.totalScore<=0);if(invalid){toast(`“${invalid.name}”的考试总分必须大于0`);return;}
   importBusy=true;
@@ -512,7 +523,7 @@ function renderData(){
   $('#view-data').innerHTML=`<div class="panel" id="dataImportPanel">\
 <h2 class="with-help">数据导入 ${panelHelpBtn('data.import','数据导入的说明')}</h2>\
 <div class="data-import-actions">\
-<label class="secondary restore-label" title="支持 xlsx">导入成绩<input id="xlsxInput" type="file" accept=".xlsx" hidden></label>\
+<label class="secondary restore-label score-import" title="支持 xlsx">导入成绩<input id="xlsxInput" type="file" accept=".xlsx" hidden></label>\
 <label class="secondary restore-label" title="支持 xlsx / csv / txt">导入名册<input id="rosterInput" type="file" accept=".xlsx,.csv,.txt" hidden></label>\
 </div>\
 <div id="importResult">\
@@ -552,7 +563,7 @@ function renderData(){
 <div class="panel" id="classPanel">\
 <h2 class="with-help">调整班级 ${panelHelpBtn('data.classAdjust','调整班级的说明')}</h2>\
 <div class="data-import-actions">\
-<button class="primary" id="classAdjustBtn">调整班级…</button>\
+<button class="secondary" id="classAdjustBtn">调整班级…</button>\
 </div>\
 </div>\
 <div class="panel" id="batchPanel">\
