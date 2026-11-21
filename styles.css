@@ -298,6 +298,10 @@ body.modal-open .view-track { touch-action:none; }
 /* 行内“详情”按钮（学生点名记录 / 统计页点名统计）：原来是文字超链接，现在做成按钮 */
 .row-btn { min-height:32px; min-width:0; padding:6px 10px; font-size:13px; white-space:nowrap; }
 .detail-header { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }.detail-header h2 { flex:1 1 auto; min-width:0; margin:0; overflow-wrap:anywhere; }.detail-header .secondary { flex:0 0 auto; white-space:nowrap; }.detail-actions { display:flex; gap:8px; margin:12px 0 0; }.detail-actions > * { flex:1; min-width:0; }
+/* 学生详情页最底部的“删除这位学生…”：入口做得隐蔽（小红字），确认框里逐项列出会删掉多少数据 */
+.detail-delete-row { margin:16px 0 4px; text-align:center; }
+.link-danger { border:0; padding:0; background:none; color:var(--danger); font:inherit; font-size:13px; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
+.link-danger:hover { color:#8f1c12; }
 .chart-wrap { position:relative; width:100%; height:320px; overflow-x:auto; overflow-y:hidden; border:1px solid var(--line); border-radius:7px; background:#fff; }.chart-wrap canvas { display:block; min-width:0; width:auto; height:300px; border:0; background:#fff; }
 .chart-wrap canvas { cursor:zoom-in; }
 .chart-preview-card { width:min(820px,100%); }

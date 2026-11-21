@@ -214,14 +214,22 @@ async function savePendingExams(){
     // 默认**不打断**导入：班级变动立即生效，同时记成一批，之后在对应班级的学生页提示核对/撤销。
     // 只有两种情况才弹窗阻塞：① 有同名行认不出（否则会多出重复学生）② 变动比例 ≥80%（多半是班级列认错了）。
     const incomingRows=entries.flatMap(e=>e.exam.students||[]);
+    // 本次导入里“同名出现 ≥2 次”的姓名（按每场考试分别数）：这些行不能再用“库里这个姓名
+    // 只有一个人”当证据，否则 4 班新来的“林子航”会被认成 19 班那位，记出假的班级变动，
+    // 还会把前者的考号写到后者的别名里。下面的分班识别、编号列采纳都要带上这份名单。
+    const dupNames=new Set();
+    entries.forEach(e=>{
+      const seen=new Set();
+      (e.exam.students||[]).forEach(r=>{const k=norm(r.name);if(!k)return;if(seen.has(k))dupNames.add(k);else seen.add(k);});
+    });
     const auditIndex=studentIdentityIndex(state.students);
-    const shift=analyzeClassShift(incomingRows,auditIndex);
-    const idColumns=analyzeIdColumns(incomingRows,auditIndex);
+    const shift=analyzeClassShift(incomingRows,auditIndex,dupNames);
+    const idColumns=analyzeIdColumns(incomingRows,auditIndex,dupNames);
     // 建议采纳：整族的“值命中率”够高、无同号重复、且判定为“同一类编号”
     const bestColumn=idColumns.find(c=>c.family&&c.comparable>=ID_COLUMN_MIN_ROWS&&c.ratio>=ID_COLUMN_RATIO&&!c.dup
       &&/同一类编号/.test(c.verdict||''))||null;
-    const ambiguous=analyzeAmbiguousRows(incomingRows,auditIndex);
-    const groupsNeedingHelp=duplicateNameGroups(incomingRows,auditIndex).filter(g=>!g.pairing&&g.entries.some(e=>!resolveIncomingStudent(e.row,auditIndex)));
+    const ambiguous=analyzeAmbiguousRows(incomingRows,auditIndex,dupNames);
+    const groupsNeedingHelp=duplicateNameGroups(incomingRows,auditIndex).filter(g=>!g.pairing&&g.entries.some(e=>!resolveIncomingStudent(e.row,auditIndex,null,dupNames)));
     const needDialog=ambiguous.length>0||shift.ratio>=CLASS_SHIFT_BLOCK_RATIO;
     if(needDialog){
       const choice=await confirmClassShift(shift,idColumns,bestColumn,groupsNeedingHelp,ambiguous);
@@ -232,12 +240,12 @@ async function savePendingExams(){
         if(bound)toast(`已按你的指认绑定 ${bound} 个人`);
       }
       if(choice.adoptType){
-        const touched=adoptIdentityColumn(incomingRows,studentIdentityIndex(state.students),choice.adoptType);
+        const touched=adoptIdentityColumn(incomingRows,studentIdentityIndex(state.students),choice.adoptType,dupNames);
         if(touched.length)await DB.putMany('students',touched);
       }
     }else if(bestColumn){
       // 不打断的情况：编号列够稳就直接记下来（只增不改，可在“设置 → 数据身份”里查看/清除）
-      const touched=adoptIdentityColumn(incomingRows,auditIndex,bestColumn.family);
+      const touched=adoptIdentityColumn(incomingRows,auditIndex,bestColumn.family,dupNames);
       if(touched.length)await DB.putMany('students',touched);
     }
     // 重复校验以数据库里的考试为准；日期在写库之前就登记，避免并发点击或失败重试时重复导入

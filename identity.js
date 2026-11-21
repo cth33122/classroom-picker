@@ -232,14 +232,16 @@ function unusedStudentId(base,taken,cache){
   return id;
 }
 // 同名但“证据不足、认不出”的行：这些会被当成新学生加入，必须让老师确认
-function analyzeAmbiguousRows(rows,index){
+// fileDupNames：本次导入里同名出现 ≥2 次的姓名。有它时不能再用“库里这个姓名只有一个人”
+// 当证据（见 resolveIncomingStudent），否则新增的同名同学会被误认成已有的那个人。
+function analyzeAmbiguousRows(rows,index,fileDupNames){
   const seen=new Set(),out=[];
   (rows||[]).forEach(r=>{
     const nm=norm(r.name);
     if(!nm)return;
     const all=(index&&index.byName?index.byName.get(nm):null)||[];
     if(all.length<2)return;
-    if(resolveIncomingStudent(r,index))return;
+    if(resolveIncomingStudent(r,index,null,fileDupNames))return;
     const key=nm+'|'+normalizeClassName(r.className)+'|'+identityValuesOf(r).join(',');
     if(seen.has(key))return;
     seen.add(key);
@@ -253,11 +255,11 @@ const ID_COLUMN_MIN_ROWS=5;      // 编号列相关性至少要能核对这么�
 const ID_COLUMN_RATIO=0.8;       // 一致率 ≥80% 才建议采纳为备选认人依据
 // 这批导入数据与库里现有学生的关系：**按人去重**统计（同一人在多场考试里出现只算一次）。
 // ratio 的分母是“能认出来的学生数”（新生单独报），这样“只导入一个班”不会被稀释成低比例。
-function analyzeClassShift(rows,index){
+function analyzeClassShift(rows,index,fileDupNames){
   const seen=new Set();
   const stat={total:0,matched:0,classChanged:0,unmatched:0,byClassChange:{},unmatchedSamples:[]};
   (rows||[]).forEach(r=>{
-    const s=resolveIncomingStudent(r,index);
+    const s=resolveIncomingStudent(r,index,null,fileDupNames);
     const key=s?('id:'+s.id):('new:'+norm(r.name)+'|'+normalizeClassName(r.className));
     if(seen.has(key))return;
     seen.add(key);
@@ -283,10 +285,10 @@ function analyzeClassShift(rows,index){
 //   · dup：同一个值出现在不同学生身上（这类列不能用来区分人）
 //   · lenCounts/charset：本批值的结构指纹（位数分布、纯数字还是含字母）
 //   · overlap/shapeSame/verdict：与库里该族编号的集合重合率与结构比较，给出“是不是同一类编号”的判断
-function analyzeIdColumns(rows,index){
+function analyzeIdColumns(rows,index,fileDupNames){
   const byFamily=new Map(),valueOwners=new Map();
   (rows||[]).forEach(r=>{
-    const s=resolveIncomingStudent(r,index);
+    const s=resolveIncomingStudent(r,index,null,fileDupNames);
     (r.ids||[]).forEach(x=>{
       const family=idFamilyOfAlias(x),type=x.type||family||'编号',value=aliasValue(x.value);
       if(!value||!family)return;
@@ -431,12 +433,14 @@ function applyIdentityAssignments(rows,assign,index,students){
 }
 // 把某一“族”的编号采纳为别名（用户确认后调用）：只写进“能唯一对上”的那些学生。
 // familyOrType 可以传体系族（'考号'）或具体列名（'自定义考号'），都能对上。
-function adoptIdentityColumn(rows,index,familyOrType){
+// fileDupNames：本次导入同名的姓名；这些行认不出时不要采纳编号，否则会把新同学（如 4 班的
+// 另一个“林子航”）的考号写到已有同名学生身上，下一次导入就会被这个号带错班级。
+function adoptIdentityColumn(rows,index,familyOrType,fileDupNames){
   const want=String(familyOrType||'');
   const wantFamily=idFamilyOf(want);
   const touched=[];
   (rows||[]).forEach(r=>{
-    const s=resolveIncomingStudent(r,index);
+    const s=resolveIncomingStudent(r,index,null,fileDupNames);
     if(!s)return;
     const hit=(r.ids||[]).find(x=>{
       const f=idFamilyOfAlias(x);

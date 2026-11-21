@@ -133,7 +133,8 @@ ${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc
 <span><button type="button" class="secondary row-btn" data-student-questions="${esc(id)}" title="查看并编辑该生的问题记录">详情</button></span>\
 </div>\
 <div class="history-q-row${q?'':' is-empty'}" data-history-question="${qid}" title="${q?'点击编辑这次的问题记录':'点击记录这次的问题'}">${q?esc(questionSummary(q,60)):'＋ 记录本次问题'}</div>`;}).join(''):'<div class="empty">暂无点名记录</div>'}\
-</div>`;
+</div>\
+<p class="hint detail-delete-row"><button type="button" class="link-danger" id="deleteStudentBtn">删除这位学生…</button></p>`;
     
   // 返回：回到进入详情页之前所在的页面，且不重绘该页面（保留其原有状态与滚动位置）
   $('#backStudents').onclick=()=>closeStudentDetail();
@@ -150,7 +151,64 @@ ${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc
   $$('#view-students [data-avatar-edit]').forEach(b=>b.onclick=openAvatar);
   // 状态标签：点一下跳到成绩分析，并滚到这位学生的条目
   $$('#view-students [data-grade-status-jump]').forEach(b=>b.onclick=()=>openGradeAnalysisForStudent(b.dataset.gradeStatusJump));
-  $('#detailFocusBtn').onclick=async()=>{s.focus=!s.focus;await DB.put(s);renderStudentDetail(id);toast(s.focus?`已把 ${s.name} 设为关注`:`已取消 ${s.name} 的关注`);};$('#detailNoCallBtn').onclick=async()=>{s.noCall=!s.noCall;await DB.put(s);refreshCandidatesAfterSettings();renderStudentDetail(id);toast(s.noCall?`已把 ${s.name} 标记为不参与点名`:`已恢复 ${s.name} 的候选资格`);};$('#editPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openNoteBtn').onclick=()=>openNoteEditor(id);const examToggleBtn=$('#toggleExamList');if(examToggleBtn)examToggleBtn.onclick=()=>{state.studentExamExpand=!state.studentExamExpand;renderStudentDetail(id);};drawScoreChart(s,trendRecords);$('#toggleScoreMode').onclick=()=>{state.scoreChartMode=scoreChartMode()==='raw'?'rate':'raw';renderStudentDetail(id);};$('#viewScoreChart').onclick=()=>openScoreChart(records);$('#downloadScoreChartInline').onclick=()=>{const canvas=$('#scoreChart');const link=document.createElement('a');link.download='成绩趋势图.png';link.href=canvas.toDataURL('image/png');link.click();};
+  $('#detailFocusBtn').onclick=async()=>{s.focus=!s.focus;await DB.put(s);renderStudentDetail(id);toast(s.focus?`已把 ${s.name} 设为关注`:`已取消 ${s.name} 的关注`);};$('#detailNoCallBtn').onclick=async()=>{s.noCall=!s.noCall;await DB.put(s);refreshCandidatesAfterSettings();renderStudentDetail(id);toast(s.noCall?`已把 ${s.name} 标记为不参与点名`:`已恢复 ${s.name} 的候选资格`);};$('#editPinyinBtn').onclick=()=>openPinyinEditor(id);$('#openNoteBtn').onclick=()=>openNoteEditor(id);$('#deleteStudentBtn').onclick=()=>deleteStudentRecord(id);const examToggleBtn=$('#toggleExamList');if(examToggleBtn)examToggleBtn.onclick=()=>{state.studentExamExpand=!state.studentExamExpand;renderStudentDetail(id);};drawScoreChart(s,trendRecords);$('#toggleScoreMode').onclick=()=>{state.scoreChartMode=scoreChartMode()==='raw'?'rate':'raw';renderStudentDetail(id);};$('#viewScoreChart').onclick=()=>openScoreChart(records);$('#downloadScoreChartInline').onclick=()=>{const canvas=$('#scoreChart');const link=document.createElement('a');link.download='成绩趋势图.png';link.href=canvas.toDataURL('image/png');link.click();};
+}
+
+// 删除一位学生及其本机关联数据（成绩、点名/评价/问题、缺席、头像、座位）。
+// 只在“确实建错了 / 重名重复了”时用，所以入口放得很隐蔽（详情页最底部的小红字），
+// 确认框里逐项列出会删掉多少条，并提醒先导出备份。
+let deletingStudent=false;
+async function deleteStudentRecord(id){
+  if(deletingStudent)return;
+  const s=(state.students||[]).find(x=>x&&x.id===id);
+  if(!s){toast('这位学生已经找不到了');return;}
+  const uid=s.uid||'';
+  const match=r=>Boolean(r)&&(r.studentId===id||(uid&&r.studentUid===uid));
+  const results=(state.examResults||[]).filter(match);
+  const history=(state.history||[]).filter(match);
+  const absences=(state.absences||[]).filter(match);
+  const hasPhoto=Boolean(state.photos&&state.photos[id]);
+  let layouts=[];
+  try{layouts=await DB.all('seats');}catch(err){}
+  const seatHits=(layouts||[]).reduce((n,l)=>n+((l&&Array.isArray(l.seats))?l.seats.filter(seat=>seat&&(seat.studentId===id||(uid&&seat.studentUid===uid))).length:0),0);
+  const who=`${s.displayName||s.name}（${s.className||'未分班'}）`;
+  if(!confirm(`删除学生“${who}”及其本机数据？\n\n会一并删除：\n· 考试成绩 ${results.length} 条\n· 点名 / 评价 / 问题记录 ${history.length} 条\n· 缺席记录 ${absences.length} 条\n· 头像 ${hasPhoto?1:0} 张\n· 座位 ${seatHits} 个\n\n此操作不可撤销，建议先到“文件 → 备份与恢复”导出完整备份。`))return;
+  deletingStudent=true;
+  try{
+    for(const r of results)await DB.remove('examResults',r.id);
+    for(const r of history)await DB.remove('history',r.id);
+    for(const r of absences)await DB.remove('absences',r.id);
+    if(hasPhoto)await DB.remove('photos',id);
+    const changed=[];
+    for(const l of layouts||[]){
+      if(!l||!Array.isArray(l.seats))continue;
+      let hit=false;
+      const seats=l.seats.map(seat=>{
+        if(!seat||!(seat.studentId===id||(uid&&seat.studentUid===uid)))return seat;
+        hit=true;const next={...seat,studentId:null};delete next.studentUid;return next;
+      });
+      if(hit)changed.push({...l,seats,updatedAt:new Date().toISOString()});
+    }
+    if(changed.length)await DB.putMany('seats',changed);
+    await DB.remove('students',id);
+    // 班级变动记录里如果还有这个人的“变动”，一起清掉（不然撤销时会显示一条找不到人的记录）
+    if(typeof state.classBatches!=='undefined'&&state.classBatches&&state.classBatches.length){
+      let batchChanged=false;
+      const next=state.classBatches.map(b=>{
+        const moves=(b.moves||[]).filter(m=>m&&m.studentId!==id);
+        if(moves.length!==(b.moves||[]).length)batchChanged=true;
+        return {...b,moves};
+      }).filter(b=>(b.moves||[]).length);
+      if(batchChanged&&typeof saveClassBatches==='function')await saveClassBatches(next);
+    }
+    state.studentDetail=null;
+    await reload();
+    toast(`已删除 ${who}`);
+  }catch(err){
+    toast('删除失败：'+((err&&err.message)||'未知错误'));
+  }finally{
+    deletingStudent=false;
+  }
 }
 
 // 打开某个学生的详情页（并切到“学生”标签，供点名页点座位、统计页点条目调用）
