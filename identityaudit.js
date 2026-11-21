@@ -368,12 +368,29 @@ async function executeStudentMerge(plan){
   return true;
 }
 
+// 从检查页点“打开详情”去学生详情时，先记下滚动位置并关掉检查页；
+// 从详情返回（左上角返回 / 安卓返回键）时再恢复检查页和原来的滚动位置。
+let auditReturnScroll=0;
+let auditReturnPending=false;
+function clearIdentityAuditReturn(){auditReturnPending=false;}
+function resumeIdentityAuditAfterDetail(){
+  if(!auditReturnPending)return false;
+  auditReturnPending=false;
+  openIdentityAudit();
+  const body=document.getElementById('identityAuditBody');
+  if(body)body.scrollTop=auditReturnScroll||0;
+  return true;
+}
+
 function bindIdentityAudit(){
   const page=document.getElementById('identityAuditPage');
   if(!page)return;
   page.querySelectorAll('[data-audit-close]').forEach(b=>{b.onclick=closeIdentityAudit;});
   page.querySelectorAll('[data-audit-open]').forEach(b=>{b.onclick=()=>{
     const id=b.dataset.auditOpen;
+    const body=document.getElementById('identityAuditBody');
+    auditReturnScroll=body?body.scrollTop:0;
+    auditReturnPending=true;
     closeIdentityAudit();
     openStudentDetail(id);
   };});
@@ -401,6 +418,7 @@ function closeIdentityAudit(){
   document.getElementById('identityAuditPage')?.remove();
 }
 function openIdentityAudit(){
+  auditReturnPending=false;   // 手动打开：不再挂起“从详情返回”的恢复
   document.getElementById('panelHelpModal')?.remove();
   let page=document.getElementById('identityAuditPage');
   if(page){page.remove();}

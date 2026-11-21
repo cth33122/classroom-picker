@@ -201,6 +201,7 @@ async function deleteStudentRecord(id){
       }).filter(b=>(b.moves||[]).length);
       if(batchChanged&&typeof saveClassBatches==='function')await saveClassBatches(next);
     }
+    if(typeof clearIdentityAuditReturn==='function')clearIdentityAuditReturn();   // 删掉后不必再恢复检查页
     state.studentDetail=null;
     await reload();
     toast(`已删除 ${who}`);
@@ -231,6 +232,8 @@ function closeStudentDetail(){
   const from=state.studentDetailFrom||'students';
   state.studentDetail=null;
   state.studentExamExpand=false;
+  // 从“重名与班级变动检查”页点进来时：返回不是回学生列表，而是回到检查页原来的滚动位置
+  if(typeof resumeIdentityAuditAfterDetail==='function'&&resumeIdentityAuditAfterDetail())return true;
   renderStudents();
   const el=$('#view-students');
   if(el)el.scrollTop=state.studentListScroll||0;
