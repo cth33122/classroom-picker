@@ -159,9 +159,9 @@ ${calls.length?calls.map(x=>{const q=String(x.question||'').trim();const qid=esc
 // 确认框里逐项列出会删掉多少条，并提醒先导出备份。
 let deletingStudent=false;
 async function deleteStudentRecord(id){
-  if(deletingStudent)return;
+  if(deletingStudent)return false;
   const s=(state.students||[]).find(x=>x&&x.id===id);
-  if(!s){toast('这位学生已经找不到了');return;}
+  if(!s){toast('这位学生已经找不到了');return false;}
   const uid=s.uid||'';
   const match=r=>Boolean(r)&&(r.studentId===id||(uid&&r.studentUid===uid));
   const results=(state.examResults||[]).filter(match);
@@ -172,7 +172,7 @@ async function deleteStudentRecord(id){
   try{layouts=await DB.all('seats');}catch(err){}
   const seatHits=(layouts||[]).reduce((n,l)=>n+((l&&Array.isArray(l.seats))?l.seats.filter(seat=>seat&&(seat.studentId===id||(uid&&seat.studentUid===uid))).length:0),0);
   const who=`${s.displayName||s.name}（${s.className||'未分班'}）`;
-  if(!confirm(`删除学生“${who}”及其本机数据？\n\n会一并删除：\n· 考试成绩 ${results.length} 条\n· 点名 / 评价 / 问题记录 ${history.length} 条\n· 缺席记录 ${absences.length} 条\n· 头像 ${hasPhoto?1:0} 张\n· 座位 ${seatHits} 个\n\n此操作不可撤销，建议先到“文件 → 备份与恢复”导出完整备份。`))return;
+  if(!confirm(`删除学生“${who}”（身份编号：${s.id}）及其本机数据？\n\n会一并删除：\n· 考试成绩 ${results.length} 条\n· 点名 / 评价 / 问题记录 ${history.length} 条\n· 缺席记录 ${absences.length} 条\n· 头像 ${hasPhoto?1:0} 张\n· 座位 ${seatHits} 个\n\n此操作不可撤销，建议先到“文件 → 备份与恢复”导出完整备份。`))return false;
   deletingStudent=true;
   try{
     for(const r of results)await DB.remove('examResults',r.id);
@@ -204,8 +204,10 @@ async function deleteStudentRecord(id){
     state.studentDetail=null;
     await reload();
     toast(`已删除 ${who}`);
+    return true;
   }catch(err){
     toast('删除失败：'+((err&&err.message)||'未知错误'));
+    return false;
   }finally{
     deletingStudent=false;
   }

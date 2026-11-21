@@ -169,6 +169,7 @@ ${aliasClearActionsHtml()}\
 }
 
 function renderSettings(){  const s=state.settings,historyOptions=HISTORY_RULE_OPTIONS;
+  const auditCount=(typeof identityAuditSummary==='function')?identityAuditSummary().suspect:0;
   $('#view-settings').innerHTML=`<div class="panel">\
 <h2 class="with-help">点名参数 ${panelHelpBtn('settings.params','点名参数的说明')}</h2>\
 <div class="grid three">\
@@ -263,6 +264,9 @@ function renderSettings(){  const s=state.settings,historyOptions=HISTORY_RULE_O
 <div class="panel">\
 <h2 class="with-help">数据身份 ${panelHelpBtn('settings.identity','数据身份的说明')}</h2>\
 <p class="hint" id="identityStatus">${esc(identityStatusText())}</p>\
+<div class="actions identity-audit-actions">\
+<button class="secondary" id="identityAuditBtn">检查重名与班级变动…${auditCount?`（${auditCount} 组可疑）`:''}</button>\
+</div>\
 ${aliasPanelHtml()}\
 </div>\
 <div class="panel">\
@@ -290,6 +294,7 @@ ${aliasPanelHtml()}\
     toast(excluded?`${name} 已回到段排名`:`${name} 不参与段排名（段里剩 ${Math.max(0,classes().length-(state.settings.poolExclude||[]).length)} 个班）`);
   });
   bindPanelHelp();
+  $('#identityAuditBtn')?.addEventListener('click',openIdentityAudit);
   // 备选编号的折叠块：记住展开状态与滚动位置（重绘后保持展开，不会“删一条就收起来”）
   const aliasFold=$('#view-settings .alias-fold');
   if(aliasFold){

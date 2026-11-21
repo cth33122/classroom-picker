@@ -673,6 +673,54 @@ button.avatar:hover { border-color:var(--teal); }
 .student-search-text { display:flex; flex-direction:column; gap:2px; min-width:0; }
 .student-search-score { display:flex; flex-direction:column; align-items:flex-end; gap:2px; flex:0 0 auto; }
 
+/* 重名与班级变动检查（数据身份 → 整屏页）：只做证据展示，改数据交给撤销/删除按钮 */
+.audit-page { position:fixed; inset:0; z-index:20; display:flex; flex-direction:column; padding:calc(14px + env(safe-area-inset-top)) 16px calc(14px + env(safe-area-inset-bottom)); background:var(--bg); }
+.audit-head { display:flex; align-items:center; gap:10px; max-width:980px; width:100%; margin:0 auto; }
+.audit-head h2 { flex:1 1 auto; margin:0; font-size:18px; }
+.audit-back { flex:0 0 auto; min-height:0; padding:2px 6px; border:0; border-radius:6px; background:transparent; color:var(--ink); font-size:22px; line-height:1; cursor:pointer; }
+.audit-body { flex:1 1 auto; max-width:980px; width:100%; margin:0 auto; padding:8px 0 30px; overflow:auto; -webkit-overflow-scrolling:touch; }
+.audit-section-title { margin:16px 0 2px; font-size:15px; }
+.audit-group { background:#fff; border:1px solid var(--line); border-radius:8px; padding:12px; margin:10px 0; }
+.audit-group-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.audit-group-head strong { font-size:16px; }
+.audit-badge-warn { color:var(--danger); background:#fde8e7; }
+.audit-student { border-top:1px dashed var(--line); margin-top:10px; padding-top:10px; }
+.audit-student-head { display:flex; align-items:center; gap:8px; }
+.audit-student-who { display:flex; flex-direction:column; min-width:0; }
+.audit-student-who small { color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.audit-aliases { margin-top:6px; color:var(--muted); font-size:12px; overflow-wrap:anywhere; }
+.audit-moves-label,.audit-exams-label { margin:10px 0 4px; color:var(--muted); font-size:12px; font-weight:700; }
+.audit-move { display:flex; align-items:center; flex-wrap:wrap; gap:6px 10px; padding:6px 8px; border:1px solid #f3c2bd; border-radius:6px; background:#fff8f7; font-size:12px; }
+.audit-move-when { color:var(--muted); }
+.audit-move-path { font-weight:700; }
+.audit-exam-head,.audit-exam-row { display:grid; grid-template-columns:1.5fr 62px 62px 1.1fr; gap:6px; align-items:center; }
+.audit-exam-head { padding:4px 0; border-bottom:1px solid var(--line); color:var(--muted); font-size:11px; font-weight:700; }
+.audit-exam-row { padding:5px 0; border-bottom:1px dashed var(--line); font-size:12px; }
+.audit-exam-row.is-odd { background:#fff6f5; }
+.audit-exam-name { min-width:0; overflow-wrap:anywhere; }
+.audit-exam-name small { display:block; color:var(--muted); font-size:10px; }
+.audit-exam-class { text-align:center; }
+.audit-exam-row.is-odd .audit-exam-class { color:var(--danger); font-weight:700; }
+.audit-exam-score,.audit-exam-rank { text-align:right; font-variant-numeric:tabular-nums; }
+.audit-exam-rank { color:var(--muted); }
+.audit-actions { display:flex; gap:8px; margin-top:10px; }
+.audit-other { margin-top:12px; border:1px solid var(--line); border-radius:7px; background:#fff; }
+.audit-other summary { cursor:pointer; padding:10px 12px; font-weight:700; list-style-position:inside; }
+.audit-other p,.audit-other .audit-steps { margin:0; padding:0 12px 12px; }
+.audit-steps { padding-left:30px !important; color:var(--muted); font-size:13px; line-height:1.7; }
+.audit-steps li { margin:2px 0; }
+.identity-audit-actions { margin:8px 0 4px; }
+/* 合并同名学生：先选保留者，再预览合并结果 */
+.merge-card { width:min(560px,100%); }
+.merge-class-field { margin:8px 0 6px; }
+.merge-pick-list { display:grid; gap:8px; margin:10px 0 4px; }
+.merge-pick { display:flex; align-items:center; gap:10px; width:100%; padding:9px 10px; text-align:left; border:1px solid var(--line); border-radius:7px; background:#fff; cursor:pointer; }
+.merge-pick:hover { border-color:var(--teal); background:var(--mint); }
+.merge-pick-main { min-width:0; overflow-wrap:anywhere; }
+.merge-pick-main small { display:block; color:var(--muted); font-size:12px; }
+.merge-card .seat-import-notes { margin:6px 0 10px; }
+#mergeStudentModal { z-index:30; }   /* 盖在整屏的“重名检查”页（z-index:20）上面 */
+
 /* 认人小游戏（「学生头像」的 ？ 长按约 0.9 秒进入）：整屏一页，盖住底部导航与弹窗 */
 .quiz-page { position:fixed; inset:0; z-index:20; display:flex; flex-direction:column; padding:calc(14px + env(safe-area-inset-top)) 16px calc(14px + env(safe-area-inset-bottom)); background:var(--bg); overflow:auto; }
 .quiz-head { display:flex; align-items:center; gap:10px; max-width:980px; width:100%; margin:0 auto; }

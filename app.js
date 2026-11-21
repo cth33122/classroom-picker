@@ -1,7 +1,7 @@
 // 入口：视图分发、数据加载、service worker 注册
 
 // 显示在“设置”页的当前版本；与 sw.js 里的 CACHE 名保持同步，两处一起改
-const APP_VERSION = 'v265';
+const APP_VERSION = 'v267';
 
 // ---------- 页面切换：五个页面并排在横向轨道上，可左右滑动 ----------
 const VIEW_NAMES=['rollcall','students','history','data','settings'];
@@ -176,6 +176,17 @@ function backCloseDetail(){
 // 没有按钮：气泡只是提醒，再按一次返回键才真的退出。
 // 退一层；返回 true 表示“已处理，应取消这次后退”
 function backHandleLayer(){
+  if(document.getElementById('identityAuditPage')){   // 重名与班级变动检查：整屏页面，先关它
+    if(document.getElementById('mergeStudentModal')){
+      document.getElementById('mergeStudentModal').remove();
+      backLog('关闭合并弹窗');
+      return true;
+    }
+    if(typeof closeIdentityAudit==='function')closeIdentityAudit();
+    else document.getElementById('identityAuditPage').remove();
+    backLog('关闭重名检查页');
+    return true;
+  }
   if(document.getElementById('avatarQuizPage')){   // 认人小游戏：整屏页面，先关它
     if(typeof closeAvatarQuiz==='function')closeAvatarQuiz();
     else document.getElementById('avatarQuizPage').remove();
