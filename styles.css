@@ -683,6 +683,7 @@ button.avatar:hover { border-color:var(--teal); }
 .audit-group { background:#fff; border:1px solid var(--line); border-radius:8px; padding:12px; margin:10px 0; }
 .audit-group-head { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
 .audit-group-head strong { font-size:16px; }
+.audit-auto-btn { flex:0 0 auto; }
 .audit-badge-warn { color:var(--danger); background:#fde8e7; }
 .audit-student { border-top:1px dashed var(--line); margin-top:10px; padding-top:10px; }
 .audit-student-head { display:flex; align-items:center; gap:8px; }

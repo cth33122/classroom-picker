@@ -98,6 +98,33 @@ ${auditExamRowsHtml(s)}\
 </div>\
 </div>`;
 }
+// 一键合并：只对“两条记录”的组放开（同班同名，或一条是 (n) 重复记录），
+// 自动选原记录保留（没有 (n) 后缀、没有班级变动、成绩更多、有头像的那条），
+// 仍然先打开预览让老师确认，不直接改数据。
+function auditHasDupSuffix(s){return /\(\d+\)$/.test(String(s&&s.id||''));}
+function auditCanAutoMerge(group){
+  if(!group||!Array.isArray(group.list)||group.list.length!==2)return false;
+  if(group.sameClass.length)return true;
+  return auditHasDupSuffix(group.list[0])!==auditHasDupSuffix(group.list[1]);
+}
+function auditResultCount(s){return (state.examResults||[]).filter(r=>auditResultMatch(r,s.id,s.uid)).length;}
+function pickAutoMergeKeeper(list){
+  const rank=s=>[
+    auditHasDupSuffix(s)?1:0,                                   // 优先原记录（没有 (2) 后缀）
+    auditMovesOf(s.id).length,                                   // 优先没有班级变动
+    -auditResultCount(s),                                        // 成绩多的
+    (state.photos&&state.photos[s.id])?0:1,                      // 有头像的
+    String(s.id||''),
+  ];
+  return list.slice().sort((a,b)=>{
+    const ra=rank(a),rb=rank(b);
+    for(let i=0;i<ra.length;i++){
+      if(ra[i]<rb[i])return -1;
+      if(ra[i]>rb[i])return 1;
+    }
+    return 0;
+  })[0];
+}
 function auditGroupHtml(group){
   return `<div class="audit-group">\
 <div class="audit-group-head">\
@@ -105,6 +132,7 @@ function auditGroupHtml(group){
 <span class="badge">同名 ${group.list.length} 人</span>\
 ${group.sameClass.length?`<span class="badge audit-badge-warn">同班：${group.sameClass.map(esc).join('、')}</span>`:''}\
 ${group.moved.length?`<span class="badge">${group.moved.length} 人有班级变动</span>`:''}\
+${auditCanAutoMerge(group)?`<button type="button" class="secondary row-btn audit-auto-btn" data-audit-auto-a="${esc(group.list[0].id)}" data-audit-auto-b="${esc(group.list[1].id)}" title="自动选原记录保留（没有 (2) 后缀、没有班级变动、成绩更多），另一条并进来；仍会先给你看预览">一键合并</button>`:''}\
 </div>\
 ${group.sameClass.length?'<p class="hint">同班同名很可能是误建的重复记录：先看谁的成绩记录里“记录班级”对不上，再决定保留哪一条。</p>':''}\
 ${group.list.map(auditStudentHtml).join('')}\
@@ -117,7 +145,7 @@ function identityAuditHtml(){
   const otherNames=model.other.slice(0,120).map(g=>`${esc(g.name)}（${g.list.map(s=>esc(s.className||'未分班')).join('、')}）`).join('；');
   return `\
 <p class="hint">这里只列“同班同名”或“有同名同学卷入班级变动”的组。判断方法：同名学生看每场考试的<b>记录班级</b>——同一场里各自在不同班，说明是两个人；某人的记录班级和现在班级对不上，说明这场成绩是按另一个班记的。</p>\
-<p class="hint">确认是误认后，优先用每条记录旁的<b>「合并到…」</b>：先选保留哪一条，预览会逐场列出保留/删掉哪些成绩、编号怎么增删、头像/座位/点名怎么处理、假变动是否撤掉；确认后才改数据。如果预览提示“有成绩属于另一个班的同名同学”，再把那场考试删掉重导，才能把他建回来。</p>\
+<p class="hint">确认是误认后，优先用每条记录旁的<b>「合并到…」</b>：先选保留哪一条，预览会逐场列出保留/删掉哪些成绩、编号怎么增删、头像/座位/点名怎么处理、假变动是否撤掉；确认后才改数据。同组正好两条时，组标题旁还有<b>「一键合并」</b>——自动选原记录保留（没有 (2) 后缀、没有班级变动、成绩更多、有头像的那条），另一条并进来；不管哪种都先给预览再确认。如果预览提示“有成绩属于另一个班的同名同学”，再把那场考试删掉重导，才能把他建回来。</p>\
 ${model.suspect.length?`${sameClass.length?`<h3 class="audit-section-title">同班同名（${sameClass.length} 组）</h3>${sameClass.map(auditGroupHtml).join('')}`:''}${moved.length?`<h3 class="audit-section-title">有同名同学的班级变动（${moved.length} 组）</h3>${moved.map(auditGroupHtml).join('')}`:''}`:'<div class="empty">没有发现同班同名或卷入班级变动的同名学生。</div>'}\
 ${model.other.length?`<details class="audit-other"><summary>其他同名（不同班、没有班级变动）：${model.other.length} 组</summary><p class="hint">${otherNames}${model.other.length>120?' 等':''}</p></details>`:''}\
 <details class="audit-other"><summary>修复步骤（确认是误认后再做）</summary>\
@@ -405,6 +433,14 @@ function bindIdentityAudit(){
     if(ok&&document.getElementById('identityAuditPage'))renderIdentityAuditBody();
   };});
   page.querySelectorAll('[data-audit-merge]').forEach(b=>{b.onclick=()=>openMergePicker(b.dataset.auditMerge);});
+  page.querySelectorAll('[data-audit-auto-a]').forEach(b=>{b.onclick=()=>{
+    const a=(state.students||[]).find(s=>s&&s.id===b.dataset.auditAutoA);
+    const c=(state.students||[]).find(s=>s&&s.id===b.dataset.auditAutoB);
+    if(!a||!c)return;
+    const keeper=pickAutoMergeKeeper([a,c]);
+    const source=keeper.id===a.id?c:a;
+    openMergePreview(keeper.id,source.id);
+  };});
 }
 function renderIdentityAuditBody(){
   const body=document.getElementById('identityAuditBody');
